@@ -3,7 +3,6 @@ package googleiam
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"strings"
 
@@ -11,6 +10,8 @@ import (
 	"github.com/google/uuid"
 
 	iam "github.com/ranesidd/iam"
+
+	internal "github.com/ranesidd/iam/internal"
 )
 
 var (
@@ -20,7 +21,10 @@ var (
 func (c *GoogleIAM) AccountExists(ctx context.Context, email string) (bool, error) {
 	client, err := c.app.Auth(ctx)
 	if err != nil {
-		return false, err
+		return false, iam.IAMError{
+			Message: err.Error(),
+			Code:    iam.ProviderErr,
+		}
 	}
 
 	_, err = client.GetUserByEmail(ctx, email)
@@ -29,7 +33,10 @@ func (c *GoogleIAM) AccountExists(ctx context.Context, email string) (bool, erro
 			return false, nil
 		}
 
-		return false, err
+		return false, iam.IAMError{
+			Message: err.Error(),
+			Code:    iam.ProviderErr,
+		}
 	}
 
 	return true, nil
@@ -38,13 +45,22 @@ func (c *GoogleIAM) AccountExists(ctx context.Context, email string) (bool, erro
 func (c *GoogleIAM) CreateAccount(ctx context.Context, account CreateAccountRequest) (*CreateAccountResponse, error) {
 	client, err := c.app.Auth(ctx)
 	if err != nil {
-		return nil, err
+		return nil, iam.IAMError{
+			Message: err.Error(),
+			Code:    iam.ProviderErr,
+		}
 	}
 
-	accountUID := uuid.New().String()
+	accountUID, err := uuid.NewV7()
+	if err != nil {
+		return nil, iam.IAMError{
+			Message: "could not create unique id",
+			Code:    iam.CouldNotGenerateErr,
+		}
+	}
 
 	params := (&auth.UserToCreate{}).
-		UID(accountUID).
+		UID(accountUID.String()).
 		Email(account.Email).
 		Password(account.Password).
 		DisplayName(account.DisplayName).
@@ -61,12 +77,30 @@ func (c *GoogleIAM) CreateAccount(ctx context.Context, account CreateAccountRequ
 
 	user, err := client.CreateUser(ctx, params)
 	if err != nil {
-		return nil, err
+
+		if strings.Contains(err.Error(), "EMAIL_EXISTS") {
+			return nil, iam.IAMError{
+				Message: "account already exists",
+				Code:    iam.AlreadyExistsErr,
+			}
+		}
+
+		if strings.Contains(err.Error(), "password must be a string at least") {
+			return nil, iam.IAMError{
+				Message: err.Error(),
+				Code:    iam.WeakPasswordErr,
+			}
+		}
+
+		return nil, iam.IAMError{
+			Message: err.Error(),
+			Code:    iam.ProviderErr,
+		}
 	}
 
 	newAccount := CreateAccountResponse{
 		Account: Account{
-			UUID:          user.UID,
+			UID:           user.UID,
 			Email:         user.Email,
 			DisplayName:   user.DisplayName,
 			EmailVerified: &user.EmailVerified,
@@ -74,48 +108,51 @@ func (c *GoogleIAM) CreateAccount(ctx context.Context, account CreateAccountRequ
 		},
 	}
 
-	if !iam.IsEmpty(user.PhoneNumber) {
+	if !internal.IsEmpty(user.PhoneNumber) {
 		newAccount.Account.Phone = &user.PhoneNumber
 	}
 
-	if !iam.IsEmpty(user.PhotoURL) {
+	if !internal.IsEmpty(user.PhotoURL) {
 		newAccount.Account.PhotoURL = &user.PhotoURL
 	}
-
-	signInResponse, err := c.SignIn(ctx, account.Email, account.Password)
-	if err != nil {
-		signInErr := errors.New("account created, please sign in")
-		return nil, signInErr
-	}
-	newAccount.SignInResponse = *signInResponse
 
 	return &newAccount, nil
 }
 
-func (c *GoogleIAM) GetAccount(ctx context.Context, accountUID string) (*Account, error) {
+func (c *GoogleIAM) Account(ctx context.Context, accountUID string) (*Account, error) {
 	client, err := c.app.Auth(ctx)
 	if err != nil {
-		return nil, err
+		return nil, iam.IAMError{
+			Message: err.Error(),
+			Code:    iam.ProviderErr,
+		}
 	}
 
 	user, err := client.GetUser(ctx, accountUID)
 	if err != nil {
+		if strings.Contains(err.Error(), "cannot find user from uid") {
+			return nil, iam.IAMError{
+				Message: "user not found",
+				Code:    iam.NotFoundErr,
+			}
+		}
+
 		return nil, err
 	}
 
 	account := Account{
-		UUID:          user.UID,
+		UID:           user.UID,
 		Email:         user.Email,
 		DisplayName:   user.DisplayName,
 		EmailVerified: &user.EmailVerified,
 		Disabled:      &user.Disabled,
 	}
 
-	if !iam.IsEmpty(user.PhoneNumber) {
+	if !internal.IsEmpty(user.PhoneNumber) {
 		account.Phone = &user.PhoneNumber
 	}
 
-	if !iam.IsEmpty(user.PhotoURL) {
+	if !internal.IsEmpty(user.PhotoURL) {
 		account.PhotoURL = &user.PhotoURL
 	}
 
@@ -123,9 +160,19 @@ func (c *GoogleIAM) GetAccount(ctx context.Context, accountUID string) (*Account
 }
 
 func (c *GoogleIAM) UpdateAccount(ctx context.Context, accountUID string, account UpdateAccountRequest) (*UpdateAccountResponse, error) {
+	if internal.IsEmpty(account.DisplayName) {
+		return nil, iam.IAMError{
+			Message: "display name cannot be empty",
+			Code:    iam.BadRequestErr,
+		}
+	}
+
 	client, err := c.app.Auth(ctx)
 	if err != nil {
-		return nil, err
+		return nil, iam.IAMError{
+			Message: err.Error(),
+			Code:    iam.ProviderErr,
+		}
 	}
 
 	params := (&auth.UserToUpdate{}).
@@ -133,12 +180,22 @@ func (c *GoogleIAM) UpdateAccount(ctx context.Context, accountUID string, accoun
 
 	user, err := client.UpdateUser(ctx, accountUID, params)
 	if err != nil {
-		return nil, err
+		if strings.Contains(err.Error(), "USER_NOT_FOUND") {
+			return nil, iam.IAMError{
+				Message: "cannot find user with given UID",
+				Code:    iam.NotFoundErr,
+			}
+		}
+
+		return nil, iam.IAMError{
+			Message: err.Error(),
+			Code:    iam.ProviderErr,
+		}
 	}
 
 	updatedAccount := UpdateAccountResponse{
 		Account: Account{
-			UUID:          user.UID,
+			UID:           user.UID,
 			Email:         user.Email,
 			DisplayName:   user.DisplayName,
 			EmailVerified: &user.EmailVerified,
@@ -146,11 +203,11 @@ func (c *GoogleIAM) UpdateAccount(ctx context.Context, accountUID string, accoun
 		},
 	}
 
-	if !iam.IsEmpty(user.PhoneNumber) {
+	if !internal.IsEmpty(user.PhoneNumber) {
 		updatedAccount.Account.Phone = &user.PhoneNumber
 	}
 
-	if !iam.IsEmpty(user.PhotoURL) {
+	if !internal.IsEmpty(user.PhotoURL) {
 		updatedAccount.Account.PhotoURL = &user.PhotoURL
 	}
 
@@ -160,12 +217,25 @@ func (c *GoogleIAM) UpdateAccount(ctx context.Context, accountUID string, accoun
 func (c *GoogleIAM) DeleteAccount(ctx context.Context, accountUID string) error {
 	client, err := c.app.Auth(ctx)
 	if err != nil {
-		return err
+		return iam.IAMError{
+			Message: err.Error(),
+			Code:    iam.ProviderErr,
+		}
 	}
 
 	err = client.DeleteUser(ctx, accountUID)
 	if err != nil {
-		return err
+		if strings.Contains(err.Error(), "USER_NOT_FOUND") {
+			return iam.IAMError{
+				Message: "cannot find user with given UID",
+				Code:    iam.NotFoundErr,
+			}
+		}
+
+		return iam.IAMError{
+			Message: err.Error(),
+			Code:    iam.ProviderErr,
+		}
 	}
 
 	return nil
@@ -178,88 +248,81 @@ func (c *GoogleIAM) UpdateAccountPassword(
 ) (*SignInResponse, error) {
 	client, err := c.app.Auth(ctx)
 	if err != nil {
-		return nil, err
+		return nil, iam.IAMError{
+			Message: err.Error(),
+			Code:    iam.ProviderErr,
+		}
 	}
 
-	account, err := c.GetAccount(ctx, accountUID)
+	account, err := c.Account(ctx, accountUID)
 	if err != nil {
 		return nil, err
 	}
 
 	if _, err := c.SignIn(ctx, account.Email, request.CurrentPassword); err != nil {
-		return nil, errors.New("an error occured while updating password")
+		return nil, iam.IAMError{
+			Message: "an error occured while updating the password",
+			Code:    iam.BadRequestErr,
+		}
 	}
 
 	params := (&auth.UserToUpdate{}).
 		Password(request.NewPassword)
 
-	_, err = client.UpdateUser(ctx, accountUID, params)
+	_, err = client.UpdateUser(ctx, account.UID, params)
 	if err != nil {
-		return nil, err
+		return nil, iam.IAMError{
+			Message: err.Error(),
+			Code:    iam.ProviderErr,
+		}
 	}
 
 	signInResponse, err := c.SignIn(ctx, account.Email, request.NewPassword)
 	if err != nil {
-		signInErr := errors.New("password updated, please sign in again")
-		return nil, signInErr
+		return nil, iam.IAMError{
+			Message: "please sign in again",
+			Code:    iam.UnknownErr,
+		}
 	}
 
 	return signInResponse, nil
 }
 
-func (c *GoogleIAM) ResetPasswordLink(ctx context.Context, email string) (*string, error) {
+func (c *GoogleIAM) VerifyAccessToken(ctx context.Context, token string) error {
 	client, err := c.app.Auth(ctx)
 	if err != nil {
-		return nil, err
-	}
-
-	actionLink, err := client.PasswordResetLink(ctx, email)
-	if err != nil {
-		return nil, err
-	}
-
-	return &actionLink, nil
-}
-
-func (c *GoogleIAM) Initiate(ctx context.Context, email string) error {
-	exists, err := c.AccountExists(ctx, email)
-	if err != nil {
-		return err
-	}
-
-	if exists {
 		return iam.IAMError{
-			Message: "Account already exists",
-			Code:    iam.AlreadyExists,
+			Message: err.Error(),
+			Code:    iam.ProviderErr,
+		}
+	}
+
+	_, err = client.VerifyIDTokenAndCheckRevoked(ctx, token)
+	if err != nil {
+		return iam.IAMError{
+			Message: err.Error(),
+			Code:    iam.ProviderErr,
 		}
 	}
 
 	return nil
 }
 
-func (c *GoogleIAM) VerifyToken(ctx context.Context, token string) error {
+func (c *GoogleIAM) SignOut(ctx context.Context, accountUID string) error {
 	client, err := c.app.Auth(ctx)
 	if err != nil {
-		return err
+		return iam.IAMError{
+			Message: err.Error(),
+			Code:    iam.ProviderErr,
+		}
 	}
 
-	_, err = client.VerifyIDTokenAndCheckRevoked(ctx, token)
+	err = client.RevokeRefreshTokens(ctx, accountUID)
 	if err != nil {
-		return err
-	}
-
-	return nil
-}
-
-func (c *GoogleIAM) SignOut(ctx context.Context, accountUUID string) error {
-	client, err := c.app.Auth(ctx)
-	if err != nil {
-		return err
-	}
-
-	err = client.RevokeRefreshTokens(ctx, accountUUID)
-	if err != nil {
-		return err
+		return iam.IAMError{
+			Message: "unable to logout",
+			Code:    iam.ProviderErr,
+		}
 	}
 
 	return nil
@@ -274,19 +337,29 @@ func (c *GoogleIAM) SignIn(ctx context.Context, email, password string) (*SignIn
 
 	marshalledRequest, err := json.Marshal(request)
 	if err != nil {
-		return nil, err
+		return nil, iam.IAMError{
+			Message: err.Error(),
+			Code:    iam.UnknownErr,
+		}
 	}
 
 	var response SignInResponse
 	url := fmt.Sprintf(signInLink, c.apiKey)
-	err = iam.HttpPost(
+	err = internal.HttpPost(
 		ctx,
 		url,
 		map[string][]string{
-			"Content-Type": {string(iam.HTTPContentTypeAppJSON)},
+			"Content-Type": {string(internal.HTTPContentTypeAppJSON)},
 		},
 		strings.NewReader(string(marshalledRequest)),
 		&response)
 
-	return &response, err
+	if err != nil {
+		return nil, iam.IAMError{
+			Message: err.Error(),
+			Code:    iam.ProviderErr,
+		}
+	}
+
+	return &response, nil
 }

@@ -5,7 +5,7 @@ import (
 )
 
 type Account struct {
-	UUID          string  `json:"uuid,omitempty"`
+	UID           string  `json:"uid,omitempty"`
 	DisplayName   string  `json:"display_name,omitempty"`
 	Email         string  `json:"email,omitempty"`
 	Phone         *string `json:"phone,omitempty"`
@@ -23,8 +23,7 @@ type CreateAccountRequest struct {
 }
 
 type CreateAccountResponse struct {
-	Account        Account        `json:"account"`
-	SignInResponse SignInResponse `json:"sign_in_response"`
+	Account Account `json:"account"`
 }
 
 type UpdateAccountRequest struct {

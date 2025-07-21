@@ -14,6 +14,11 @@ func (e IAMError) Error() string {
 type ErrorCode int
 
 const (
-	AlreadyExists ErrorCode = iota + 100000
-	NotFound
+	AlreadyExistsErr ErrorCode = iota + 100000
+	NotFoundErr
+	CouldNotGenerateErr
+	ProviderErr
+	WeakPasswordErr
+	BadRequestErr
+	UnknownErr
 )

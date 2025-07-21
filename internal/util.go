@@ -1,4 +1,4 @@
-package iam
+package internal
 
 import (
 	"context"
@@ -53,4 +53,8 @@ func HttpPost(ctx context.Context, url string, headers map[string][]string, body
 	}
 
 	return json.Unmarshal(responseData, responseObjPtr)
+}
+
+func AnyToPtr[T any](value T) *T {
+	return &value
 }
