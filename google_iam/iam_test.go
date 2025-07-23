@@ -161,6 +161,74 @@ func TestCreateAccount(t *testing.T) {
 			cleanup: true,
 		},
 		{
+			name: "Account Creation with Claims",
+			request: googleiam.CreateAccountRequest{
+				DisplayName: "Test User Claims",
+				Email:       "testclaims@example.com",
+				Password:    "testPassword123",
+				Claims: map[string]any{
+					"role":   "user",
+					"active": true,
+				},
+			},
+			expected: &googleiam.CreateAccountResponse{
+				Account: googleiam.Account{
+					DisplayName:   "Test User Claims",
+					Email:         "testclaims@example.com",
+					EmailVerified: internal.AnyToPtr(true),
+					Disabled:      internal.AnyToPtr(false),
+				},
+			},
+			err:     nil,
+			cleanup: true,
+		},
+		{
+			name: "Account Creation with Empty Claims",
+			request: googleiam.CreateAccountRequest{
+				DisplayName: "Test User Empty Claims",
+				Email:       "testemptyclaims@example.com",
+				Password:    "testPassword123",
+				Claims:      map[string]any{},
+			},
+			expected: &googleiam.CreateAccountResponse{
+				Account: googleiam.Account{
+					DisplayName:   "Test User Empty Claims",
+					Email:         "testemptyclaims@example.com",
+					EmailVerified: internal.AnyToPtr(true),
+					Disabled:      internal.AnyToPtr(false),
+				},
+			},
+			err:     nil,
+			cleanup: true,
+		},
+		{
+			name: "Account Creation with All Fields Including Claims",
+			request: googleiam.CreateAccountRequest{
+				DisplayName: "Test User Complete",
+				Email:       "testcomplete@example.com",
+				Password:    "testPassword123",
+				Phone:       internal.AnyToPtr("+14254259888"),
+				PhotoURL:    internal.AnyToPtr("https://example.com/complete.jpg"),
+				Claims: map[string]any{
+					"role":        "admin",
+					"permissions": []string{"read", "write"},
+					"level":       5,
+				},
+			},
+			expected: &googleiam.CreateAccountResponse{
+				Account: googleiam.Account{
+					DisplayName:   "Test User Complete",
+					Email:         "testcomplete@example.com",
+					Phone:         internal.AnyToPtr("+14254259888"),
+					PhotoURL:      internal.AnyToPtr("https://example.com/complete.jpg"),
+					EmailVerified: internal.AnyToPtr(true),
+					Disabled:      internal.AnyToPtr(false),
+				},
+			},
+			err:     nil,
+			cleanup: true,
+		},
+		{
 			name: "Invalid Email Format",
 			request: googleiam.CreateAccountRequest{
 				DisplayName: "Test User",
@@ -306,7 +374,7 @@ func TestUpdateAccount(t *testing.T) {
 			name:       "Valid Account Update",
 			accountUID: "qPrEGMfPojPELUL0QfVx1p0m6RL2",
 			request: googleiam.UpdateAccountRequest{
-				DisplayName: "Updated Display Name",
+				DisplayName: internal.AnyToPtr("Updated Display Name"),
 			},
 			expected: &googleiam.UpdateAccountResponse{
 				Account: googleiam.Account{
@@ -323,11 +391,11 @@ func TestUpdateAccount(t *testing.T) {
 			name:       "Empty Display Name",
 			accountUID: "qPrEGMfPojPELUL0QfVx1p0m6RL2",
 			request: googleiam.UpdateAccountRequest{
-				DisplayName: "",
+				DisplayName: internal.AnyToPtr(""),
 			},
 			expected: nil,
 			err: iampackage.IAMError{
-				Message: "display name cannot be empty",
+				Message: "nothing to update",
 				Code:    iampackage.BadRequestErr,
 			},
 		},
@@ -335,7 +403,7 @@ func TestUpdateAccount(t *testing.T) {
 			name:       "Account Not Found",
 			accountUID: "nonexistent-uid-12345",
 			request: googleiam.UpdateAccountRequest{
-				DisplayName: "Test Name",
+				DisplayName: internal.AnyToPtr("Test Name"),
 			},
 			expected: nil,
 			err: iampackage.IAMError{
@@ -509,6 +577,333 @@ func TestUpdateAccountPassword(t *testing.T) {
 			}
 
 			if test.cleanup {
+				app := getFirebaseInternalRef(instance)
+				authClient, _ := app.Auth(context.Background())
+				authClient.DeleteUser(context.Background(), testUID)
+			}
+		})
+	}
+}
+
+func TestVerifyAccessToken(t *testing.T) {
+	tests := []struct {
+		name       string
+		token      string
+		err        error
+		needsSetup bool
+		setupEmail string
+		setupPass  string
+		cleanup    bool
+	}{
+		{
+			name:       "Valid Token Verification",
+			token:      "", // Will be set during setup
+			err:        nil,
+			needsSetup: true,
+			setupEmail: "tokenverify@example.com",
+			setupPass:  "testPassword123",
+			cleanup:    true,
+		},
+		{
+			name:  "Invalid Token",
+			token: "invalid-token-123",
+			err: iampackage.IAMError{
+				Message: "incorrect number of segments",
+				Code:    iampackage.ProviderErr,
+			},
+			needsSetup: false,
+			cleanup:    false,
+		},
+		{
+			name:  "Empty Token",
+			token: "",
+			err: iampackage.IAMError{
+				Message: "invalid token",
+				Code:    iampackage.BadRequestErr,
+			},
+			needsSetup: false,
+			cleanup:    false,
+		},
+		{
+			name:  "Malformed JWT Token",
+			token: "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.malformed",
+			err: iampackage.IAMError{
+				Message: "incorrect number of segments",
+				Code:    iampackage.ProviderErr,
+			},
+			needsSetup: false,
+			cleanup:    false,
+		},
+	}
+
+	instance := getIAMInstance()
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			testToken := test.token
+			var testUID string
+
+			if test.needsSetup {
+				// Create a test account
+				createReq := googleiam.CreateAccountRequest{
+					DisplayName: "Token Verify Test User",
+					Email:       test.setupEmail,
+					Password:    test.setupPass,
+				}
+				createRes, createErr := instance.CreateAccount(context.Background(), createReq)
+				assert.NoError(t, createErr)
+				assert.NotNil(t, createRes)
+				testUID = createRes.Account.UID
+
+				// Sign in to get a valid token
+				signInRes, signInErr := instance.SignIn(context.Background(), test.setupEmail, test.setupPass)
+				assert.NoError(t, signInErr)
+				assert.NotNil(t, signInRes)
+				testToken = signInRes.IDToken
+			}
+
+			// Verify the token
+			_, err := instance.VerifyAccessToken(context.Background(), testToken)
+
+			if test.err == nil {
+				assert.NoError(t, err)
+			} else {
+				assert.Error(t, err)
+				// Check if the error contains key parts of the expected message
+				expectedMsg := test.err.(iampackage.IAMError).Message
+				actualMsg := err.(iampackage.IAMError).Message
+
+				// For Firebase errors, just check if it contains the main error type since exact messages can vary
+				if test.name == "Invalid Token" || test.name == "Malformed JWT Token" {
+					assert.Contains(t, actualMsg, "incorrect number of segments")
+				} else {
+					assert.Equal(t, expectedMsg, actualMsg)
+				}
+				assert.Equal(t, test.err.(iampackage.IAMError).Code, err.(iampackage.IAMError).Code)
+			}
+
+			if test.cleanup && testUID != "" {
+				app := getFirebaseInternalRef(instance)
+				authClient, _ := app.Auth(context.Background())
+				authClient.DeleteUser(context.Background(), testUID)
+			}
+		})
+	}
+}
+
+func TestSignIn(t *testing.T) {
+	tests := []struct {
+		name       string
+		email      string
+		password   string
+		expected   *googleiam.SignInResponse
+		err        error
+		needsSetup bool
+		setupEmail string
+		setupPass  string
+		cleanup    bool
+	}{
+		{
+			name:       "Valid Sign In",
+			email:      "",                          // Will be set during setup
+			password:   "",                          // Will be set during setup
+			expected:   &googleiam.SignInResponse{}, // We'll check fields individually
+			err:        nil,
+			needsSetup: true,
+			setupEmail: "signintest@example.com",
+			setupPass:  "testPassword123",
+			cleanup:    true,
+		},
+		{
+			name:     "Invalid Email Format",
+			email:    "invalid-email",
+			password: "testPassword123",
+			expected: nil,
+			err: iampackage.IAMError{
+				Message: "INVALID_EMAIL",
+				Code:    iampackage.ProviderErr,
+			},
+			needsSetup: false,
+			cleanup:    false,
+		},
+		{
+			name:     "Wrong Password",
+			email:    "signintest@example.com",
+			password: "wrongPassword",
+			expected: nil,
+			err: iampackage.IAMError{
+				Message: "INVALID_LOGIN_CREDENTIALS",
+				Code:    iampackage.ProviderErr,
+			},
+			needsSetup: false,
+			cleanup:    false,
+		},
+		{
+			name:     "Non-existent Email",
+			email:    "nonexistent@example.com",
+			password: "testPassword123",
+			expected: nil,
+			err: iampackage.IAMError{
+				Message: "INVALID_LOGIN_CREDENTIALS",
+				Code:    iampackage.ProviderErr,
+			},
+			needsSetup: false,
+			cleanup:    false,
+		},
+		{
+			name:     "Empty Email",
+			email:    "",
+			password: "testPassword123",
+			expected: nil,
+			err: iampackage.IAMError{
+				Message: "INVALID_EMAIL",
+				Code:    iampackage.ProviderErr,
+			},
+			needsSetup: false,
+			cleanup:    false,
+		},
+		{
+			name:     "Empty Password",
+			email:    "signintest@example.com",
+			password: "",
+			expected: nil,
+			err: iampackage.IAMError{
+				Message: "MISSING_PASSWORD",
+				Code:    iampackage.ProviderErr,
+			},
+			needsSetup: false,
+			cleanup:    false,
+		},
+	}
+
+	instance := getIAMInstance()
+	var setupUID string
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			testEmail := test.email
+			testPassword := test.password
+
+			if test.needsSetup {
+				// Create a test account for sign-in
+				createReq := googleiam.CreateAccountRequest{
+					DisplayName: "Sign In Test User",
+					Email:       test.setupEmail,
+					Password:    test.setupPass,
+				}
+				createRes, createErr := instance.CreateAccount(context.Background(), createReq)
+				assert.NoError(t, createErr)
+				assert.NotNil(t, createRes)
+				setupUID = createRes.Account.UID
+				testEmail = test.setupEmail
+				testPassword = test.setupPass
+			}
+
+			// Test Sign In
+			res, err := instance.SignIn(context.Background(), testEmail, testPassword)
+
+			if test.expected != nil {
+				assert.NoError(t, err)
+				assert.NotNil(t, res)
+				assert.NotEmpty(t, res.IDToken)
+				assert.NotEmpty(t, res.RefreshToken)
+				assert.Equal(t, testEmail, res.Email)
+				assert.NotEmpty(t, res.LocalID)
+				assert.Equal(t, true, res.Registered)
+			} else {
+				assert.Error(t, err)
+				assert.Nil(t, res)
+				// Check if error message contains expected error code
+				actualMsg := err.(iampackage.IAMError).Message
+				expectedMsg := test.err.(iampackage.IAMError).Message
+				assert.Contains(t, actualMsg, expectedMsg)
+				assert.Equal(t, test.err.(iampackage.IAMError).Code, err.(iampackage.IAMError).Code)
+			}
+
+			if test.cleanup && setupUID != "" {
+				app := getFirebaseInternalRef(instance)
+				authClient, _ := app.Auth(context.Background())
+				authClient.DeleteUser(context.Background(), setupUID)
+			}
+		})
+	}
+}
+
+func TestSignOut(t *testing.T) {
+	tests := []struct {
+		name       string
+		accountUID string
+		err        error
+		needsSetup bool
+		setupEmail string
+		setupPass  string
+		cleanup    bool
+	}{
+		{
+			name:       "Valid Sign Out",
+			accountUID: "", // Will be set during setup
+			err:        nil,
+			needsSetup: true,
+			setupEmail: "signouttest@example.com",
+			setupPass:  "testPassword123",
+			cleanup:    true,
+		},
+		{
+			name:       "Non-existent Account UID",
+			accountUID: "nonexistent-uid-12345",
+			err: iampackage.IAMError{
+				Message: "unable to logout",
+				Code:    iampackage.ProviderErr,
+			},
+			needsSetup: false,
+			cleanup:    false,
+		},
+		{
+			name:       "Empty Account UID",
+			accountUID: "",
+			err: iampackage.IAMError{
+				Message: "unable to logout",
+				Code:    iampackage.ProviderErr,
+			},
+			needsSetup: false,
+			cleanup:    false,
+		},
+	}
+
+	instance := getIAMInstance()
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			testUID := test.accountUID
+
+			if test.needsSetup {
+				// Create and sign in to get a user with valid refresh tokens
+				createReq := googleiam.CreateAccountRequest{
+					DisplayName: "Sign Out Test User",
+					Email:       test.setupEmail,
+					Password:    test.setupPass,
+				}
+				createRes, createErr := instance.CreateAccount(context.Background(), createReq)
+				assert.NoError(t, createErr)
+				assert.NotNil(t, createRes)
+				testUID = createRes.Account.UID
+
+				// Sign in to generate refresh tokens
+				signInRes, signInErr := instance.SignIn(context.Background(), test.setupEmail, test.setupPass)
+				assert.NoError(t, signInErr)
+				assert.NotNil(t, signInRes)
+			}
+
+			// Test Sign Out
+			err := instance.SignOut(context.Background(), testUID)
+
+			if test.err == nil {
+				assert.NoError(t, err)
+			} else {
+				assert.Error(t, err)
+				assert.Equal(t, test.err.(iampackage.IAMError).Message, err.(iampackage.IAMError).Message)
+				assert.Equal(t, test.err.(iampackage.IAMError).Code, err.(iampackage.IAMError).Code)
+			}
+
+			if test.cleanup && testUID != "" {
 				app := getFirebaseInternalRef(instance)
 				authClient, _ := app.Auth(context.Background())
 				authClient.DeleteUser(context.Background(), testUID)

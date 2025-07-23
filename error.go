@@ -21,4 +21,5 @@ const (
 	WeakPasswordErr
 	BadRequestErr
 	UnknownErr
+	AssignClaimsErr
 )

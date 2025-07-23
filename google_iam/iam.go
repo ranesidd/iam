@@ -116,6 +116,12 @@ func (c *GoogleIAM) CreateAccount(ctx context.Context, account CreateAccountRequ
 		newAccount.Account.PhotoURL = &user.PhotoURL
 	}
 
+	if account.Claims != nil {
+		err = c.updateClaims(ctx, client, accountUID.String(), account.Claims)
+		if err != nil {
+			return nil, err
+		}
+	}
 	return &newAccount, nil
 }
 
@@ -137,7 +143,10 @@ func (c *GoogleIAM) Account(ctx context.Context, accountUID string) (*Account, e
 			}
 		}
 
-		return nil, err
+		return nil, iam.IAMError{
+			Message: err.Error(),
+			Code:    iam.ProviderErr,
+		}
 	}
 
 	account := Account{
@@ -160,9 +169,10 @@ func (c *GoogleIAM) Account(ctx context.Context, accountUID string) (*Account, e
 }
 
 func (c *GoogleIAM) UpdateAccount(ctx context.Context, accountUID string, account UpdateAccountRequest) (*UpdateAccountResponse, error) {
-	if internal.IsEmpty(account.DisplayName) {
+	if (account.DisplayName == nil || internal.IsEmpty(*account.DisplayName)) &&
+		(len(account.Claims) == 0) {
 		return nil, iam.IAMError{
-			Message: "display name cannot be empty",
+			Message: "nothing to update",
 			Code:    iam.BadRequestErr,
 		}
 	}
@@ -175,43 +185,58 @@ func (c *GoogleIAM) UpdateAccount(ctx context.Context, accountUID string, accoun
 		}
 	}
 
-	params := (&auth.UserToUpdate{}).
-		DisplayName(account.DisplayName)
+	if account.DisplayName != nil && !internal.IsEmpty(*account.DisplayName) {
+		if err := c.updateDisplayName(ctx, client, accountUID, *account.DisplayName); err != nil {
+			return nil, err
+		}
+	}
 
-	user, err := client.UpdateUser(ctx, accountUID, params)
+	if len(account.Claims) != 0 {
+		if err := c.updateClaims(ctx, client, accountUID, account.Claims); err != nil {
+			return nil, err
+		}
+	}
+
+	updatedAccount, err := c.Account(ctx, accountUID)
+	if err != nil {
+		return nil, err
+	}
+
+	return &UpdateAccountResponse{
+		Account: *updatedAccount,
+	}, nil
+}
+
+func (c *GoogleIAM) updateDisplayName(ctx context.Context, client *auth.Client, uid string, displayName string) error {
+	params := (&auth.UserToUpdate{}).
+		DisplayName(displayName)
+	_, err := client.UpdateUser(ctx, uid, params)
 	if err != nil {
 		if strings.Contains(err.Error(), "USER_NOT_FOUND") {
-			return nil, iam.IAMError{
+			return iam.IAMError{
 				Message: "cannot find user with given UID",
 				Code:    iam.NotFoundErr,
 			}
 		}
 
-		return nil, iam.IAMError{
+		return iam.IAMError{
 			Message: err.Error(),
 			Code:    iam.ProviderErr,
 		}
 	}
 
-	updatedAccount := UpdateAccountResponse{
-		Account: Account{
-			UID:           user.UID,
-			Email:         user.Email,
-			DisplayName:   user.DisplayName,
-			EmailVerified: &user.EmailVerified,
-			Disabled:      &user.Disabled,
-		},
-	}
+	return nil
+}
 
-	if !internal.IsEmpty(user.PhoneNumber) {
-		updatedAccount.Account.Phone = &user.PhoneNumber
+func (c *GoogleIAM) updateClaims(ctx context.Context, client *auth.Client, uid string, claims map[string]any) error {
+	err := client.SetCustomUserClaims(ctx, uid, claims)
+	if err != nil {
+		return iam.IAMError{
+			Message: err.Error(),
+			Code:    iam.AssignClaimsErr,
+		}
 	}
-
-	if !internal.IsEmpty(user.PhotoURL) {
-		updatedAccount.Account.PhotoURL = &user.PhotoURL
-	}
-
-	return &updatedAccount, nil
+	return nil
 }
 
 func (c *GoogleIAM) DeleteAccount(ctx context.Context, accountUID string) error {
@@ -288,24 +313,38 @@ func (c *GoogleIAM) UpdateAccountPassword(
 	return signInResponse, nil
 }
 
-func (c *GoogleIAM) VerifyAccessToken(ctx context.Context, token string) error {
+func (c *GoogleIAM) VerifyAccessToken(ctx context.Context, token string) (map[string]any, error) {
+	if len(token) == 0 {
+		return nil, iam.IAMError{
+			Message: "invalid token",
+			Code:    iam.BadRequestErr,
+		}
+	}
+
 	client, err := c.app.Auth(ctx)
 	if err != nil {
-		return iam.IAMError{
+		return nil, iam.IAMError{
 			Message: err.Error(),
 			Code:    iam.ProviderErr,
 		}
 	}
 
-	_, err = client.VerifyIDTokenAndCheckRevoked(ctx, token)
+	authToken, err := client.VerifyIDTokenAndCheckRevoked(ctx, token)
 	if err != nil {
-		return iam.IAMError{
+		return nil, iam.IAMError{
 			Message: err.Error(),
 			Code:    iam.ProviderErr,
 		}
 	}
 
-	return nil
+	if authToken == nil {
+		return nil, iam.IAMError{
+			Message: "invalid auth token",
+			Code:    iam.ProviderErr,
+		}
+	}
+
+	return authToken.Claims, nil
 }
 
 func (c *GoogleIAM) SignOut(ctx context.Context, accountUID string) error {

@@ -15,11 +15,12 @@ type Account struct {
 }
 
 type CreateAccountRequest struct {
-	DisplayName string  `json:"display_name"`
-	Email       string  `json:"email"`
-	Password    string  `json:"password"`
-	Phone       *string `json:"phone,omitempty"`
-	PhotoURL    *string `json:"photo_url,omitempty"`
+	DisplayName string         `json:"display_name"`
+	Email       string         `json:"email"`
+	Password    string         `json:"password"`
+	Phone       *string        `json:"phone,omitempty"`
+	PhotoURL    *string        `json:"photo_url,omitempty"`
+	Claims      map[string]any `json:"claims,omitempty"`
 }
 
 type CreateAccountResponse struct {
@@ -27,7 +28,8 @@ type CreateAccountResponse struct {
 }
 
 type UpdateAccountRequest struct {
-	DisplayName string `json:"display_name"`
+	DisplayName *string        `json:"display_name"`
+	Claims      map[string]any `json:"claims,omitempty"`
 }
 
 type UpdateAccountResponse struct {
@@ -65,7 +67,7 @@ type SignInResponse struct {
 }
 
 type SignOutRequest struct {
-	UUID string `json:"uuid"`
+	UID string `json:"uid"`
 }
 
 type OTP struct {
