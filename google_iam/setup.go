@@ -2,7 +2,6 @@ package googleiam
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"os"
 
@@ -11,7 +10,6 @@ import (
 )
 
 type GoogleIAM struct {
-	db     *sql.DB
 	app    *firebase.App
 	apiKey string
 }
@@ -31,17 +29,6 @@ func New() (*GoogleIAM, error) {
 		app:    app,
 		apiKey: apiKey,
 	}, nil
-}
-
-func NewWithOTP(db *sql.DB) (*GoogleIAM, error) {
-	iamInstance, err := New()
-	if err != nil {
-		return nil, err
-	}
-
-	iamInstance.db = db
-
-	return iamInstance, nil
 }
 
 func initializeGoogleAdminSDK() (*firebase.App, error) {

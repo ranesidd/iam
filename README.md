@@ -17,8 +17,12 @@ This library aims to provide a consistent, easy-to-use interface for common IAM 
 - **Account Verification**: Email-based account existence checks
 - **Token Operations**: ID token verification and refresh token revocation
 
+### OTP (One-Time Password)
+- **Provider-Independent**: Standalone OTP package that works with any IAM provider
+- **Database Persistence**: Store and validate OTPs with configurable expiration
+- **Flexible Expiration**: Set custom expiration times for OTP codes
+
 ### Google Firebase Features
-- **OTP Support**: Generate and validate one-time passwords with database persistence
 - **Firebase Integration**: Full Firebase Admin SDK integration
 - **Secure Authentication**: Uses Firebase Authentication REST API for sign-in operations
 
@@ -67,30 +71,85 @@ func main() {
 }
 ```
 
-### With OTP Support
+### Unified Interface (Provider-Agnostic)
 
 ```go
-// Initialize with database for OTP functionality
-db, err := sql.Open("mysql", "user:password@tcp(localhost:3306)/database")
-if err != nil {
-    log.Fatal(err)
-}
+package main
 
-iam, err := googleiam.NewWithOTP(db)
-if err != nil {
-    log.Fatal(err)
-}
+import (
+    "context"
+    "database/sql"
+    "log"
 
-// Generate OTP
-otp, err := iam.GenerateOTP(ctx, "user@example.com")
-if err != nil {
-    log.Fatal(err)
-}
+    "github.com/ranesidd/iam"
+    _ "github.com/go-sql-driver/mysql"
+)
 
-// Validate OTP
-err = iam.ValidateOTP(ctx, "user@example.com", otp.Code)
-if err != nil {
-    log.Fatal(err)
+func main() {
+    // Initialize database (optional, for OTP support)
+    db, err := sql.Open("mysql", "user:password@tcp(localhost:3306)/database")
+    if err != nil {
+        log.Fatal(err)
+    }
+    defer db.Close()
+
+    // Initialize with unified interface
+    // Automatically selects provider based on PROVIDER_GCP env var
+    iamClient, err := iam.NewWithDatabase(db)
+    if err != nil {
+        log.Fatal(err)
+    }
+
+    ctx := context.Background()
+
+    // Use the same IAM operations regardless of provider
+    // The interface abstracts provider-specific implementations
+    log.Printf("IAM client initialized: %+v", iamClient)
+}
+```
+
+### OTP (One-Time Password)
+
+```go
+package main
+
+import (
+    "context"
+    "database/sql"
+    "log"
+
+    "github.com/ranesidd/iam/otp"
+    _ "github.com/go-sql-driver/mysql"
+)
+
+func main() {
+    // Initialize database connection
+    db, err := sql.Open("mysql", "user:password@tcp(localhost:3306)/database")
+    if err != nil {
+        log.Fatal(err)
+    }
+    defer db.Close()
+
+    // Create OTP service (no IAM provider needed!)
+    otpService := otp.New(db)
+
+    ctx := context.Background()
+
+    // Generate OTP with 24 hour expiration
+    otpPayload, err := otpService.Generate(ctx, "user@example.com", 24)
+    if err != nil {
+        log.Fatal(err)
+    }
+
+    log.Printf("Generated OTP: %s (expires: %v)", otpPayload.Code, otpPayload.ExpiresAt)
+
+    // Validate OTP
+    err = otpService.Validate(ctx, "user@example.com", otpPayload.Code)
+    if err != nil {
+        log.Fatal(err)
+    }
+
+    log.Println("OTP validated successfully!")
 }
 ```
 
@@ -98,12 +157,22 @@ if err != nil {
 
 ### Environment Variables
 
-For Google Firebase provider:
+**For Unified IAM Interface:**
+
+```bash
+export PROVIDER_GCP=true  # Enable Google Cloud Platform provider
+```
+
+**For Google Firebase provider:**
 
 ```bash
 export GOOGLE_SDK_CONFIG='{"type":"service_account","project_id":"your-project",...}'
 export GOOGLE_API_KEY="your-firebase-api-key"
 ```
+
+**For OTP functionality:**
+
+No environment variables required! The OTP package is standalone and only requires a database connection.
 
 ### Database Setup (for OTP functionality)
 
@@ -119,7 +188,7 @@ CREATE TABLE verification_codes (
 
 ## API Reference
 
-### Core Operations
+### Google IAM Operations
 
 ```go
 // Account management
@@ -137,17 +206,34 @@ VerifyToken(ctx context.Context, token string) error
 // Password operations
 UpdateAccountPassword(ctx context.Context, accountUID string, request UpdatePasswordRequest) (*SignInResponse, error)
 ResetPasswordLink(ctx context.Context, email string) (*string, error)
+```
 
-// OTP operations (requires database)
-GenerateOTP(ctx context.Context, email string) (*OTP, error)
-ValidateOTP(ctx context.Context, email, code string) error
+### OTP Package (`github.com/ranesidd/iam/otp`)
+
+```go
+// Initialize OTP service
+New(db *sql.DB) *OTP
+
+// Generate OTP with custom expiration (in hours)
+Generate(ctx context.Context, email string, expirationHours int) (*OTPPayload, error)
+
+// Validate OTP code
+Validate(ctx context.Context, email, code string) error
+
+// OTPPayload type
+type OTPPayload struct {
+    Email     string
+    Code      string
+    ExpiresAt time.Time
+}
 ```
 
 ## Error Handling
 
-The library uses structured error handling with custom error types:
+The library uses structured error handling with custom error types (located in `github.com/ranesidd/iam/common`):
 
 ```go
+// Located in github.com/ranesidd/iam/common
 type IAMError struct {
     Message string    `json:"message"`
     Code    ErrorCode `json:"error_code"`
