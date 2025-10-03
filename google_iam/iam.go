@@ -10,7 +10,7 @@ import (
 	"firebase.google.com/go/auth"
 	"github.com/google/uuid"
 
-	iam "github.com/ranesidd/iam"
+	common "github.com/ranesidd/iam/common"
 )
 
 var (
@@ -74,11 +74,11 @@ func (c *GoogleIAM) CreateAccount(ctx context.Context, account CreateAccountRequ
 		},
 	}
 
-	if !iam.IsEmpty(user.PhoneNumber) {
+	if !common.IsEmpty(user.PhoneNumber) {
 		newAccount.Account.Phone = &user.PhoneNumber
 	}
 
-	if !iam.IsEmpty(user.PhotoURL) {
+	if !common.IsEmpty(user.PhotoURL) {
 		newAccount.Account.PhotoURL = &user.PhotoURL
 	}
 
@@ -111,11 +111,11 @@ func (c *GoogleIAM) GetAccount(ctx context.Context, accountUID string) (*Account
 		Disabled:      &user.Disabled,
 	}
 
-	if !iam.IsEmpty(user.PhoneNumber) {
+	if !common.IsEmpty(user.PhoneNumber) {
 		account.Phone = &user.PhoneNumber
 	}
 
-	if !iam.IsEmpty(user.PhotoURL) {
+	if !common.IsEmpty(user.PhotoURL) {
 		account.PhotoURL = &user.PhotoURL
 	}
 
@@ -146,11 +146,11 @@ func (c *GoogleIAM) UpdateAccount(ctx context.Context, accountUID string, accoun
 		},
 	}
 
-	if !iam.IsEmpty(user.PhoneNumber) {
+	if !common.IsEmpty(user.PhoneNumber) {
 		updatedAccount.Account.Phone = &user.PhoneNumber
 	}
 
-	if !iam.IsEmpty(user.PhotoURL) {
+	if !common.IsEmpty(user.PhotoURL) {
 		updatedAccount.Account.PhotoURL = &user.PhotoURL
 	}
 
@@ -228,9 +228,9 @@ func (c *GoogleIAM) Initiate(ctx context.Context, email string) error {
 	}
 
 	if exists {
-		return iam.IAMError{
+		return common.IAMError{
 			Message: "Account already exists",
-			Code:    iam.AlreadyExists,
+			Code:    common.AlreadyExists,
 		}
 	}
 
@@ -279,11 +279,11 @@ func (c *GoogleIAM) SignIn(ctx context.Context, email, password string) (*SignIn
 
 	var response SignInResponse
 	url := fmt.Sprintf(signInLink, c.apiKey)
-	err = iam.HttpPost(
+	err = common.HttpPost(
 		ctx,
 		url,
 		map[string][]string{
-			"Content-Type": {string(iam.HTTPContentTypeAppJSON)},
+			"Content-Type": {string(common.HTTPContentTypeAppJSON)},
 		},
 		strings.NewReader(string(marshalledRequest)),
 		&response)

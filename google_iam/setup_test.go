@@ -66,10 +66,6 @@ func TestNew(t *testing.T) {
 	}
 }
 
-func TestNewWithOTP(t *testing.T) {
-
-}
-
 func setupTest(t *testing.T, env Env) func(t *testing.T, env Env) {
 
 	// Set keys to tmp_* if already set in env

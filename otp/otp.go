@@ -1,7 +1,8 @@
-package googleiam
+package otp
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"strings"
@@ -10,16 +11,20 @@ import (
 	"github.com/google/uuid"
 )
 
-const (
-	OTPExpiration = 24
-)
+type OTP struct {
+	db *sql.DB
+}
 
-func (c *GoogleIAM) GenerateOTP(ctx context.Context, email string) (*OTP, error) {
+func New(db *sql.DB) *OTP {
+	return &OTP{db: db}
+}
+
+func (c *OTP) Generate(ctx context.Context, email string, expirationHours int) (*OTPPayload, error) {
 	uuidStr := uuid.NewString()
-	expiresAt := time.Now().UTC().Add(OTPExpiration * time.Hour)
+	expiresAt := time.Now().UTC().Add(time.Duration(expirationHours) * time.Hour)
 	code := strings.ToUpper(uuidStr[:6])
 
-	verificationCode := OTP{
+	verificationCode := OTPPayload{
 		Email:     email,
 		Code:      code,
 		ExpiresAt: expiresAt,
@@ -33,7 +38,7 @@ func (c *GoogleIAM) GenerateOTP(ctx context.Context, email string) (*OTP, error)
 	return &verificationCode, nil
 }
 
-func (c *GoogleIAM) ValidateOTP(ctx context.Context, email, code string) error {
+func (c *OTP) Validate(ctx context.Context, email, code string) error {
 	verificationCode, err := c.getVerificationCode(ctx, email)
 	if err != nil {
 		return err
@@ -55,20 +60,20 @@ func (c *GoogleIAM) ValidateOTP(ctx context.Context, email, code string) error {
 	return nil
 }
 
-func (c *GoogleIAM) getVerificationCode(ctx context.Context, email string) (OTP, error) {
+func (c *OTP) getVerificationCode(ctx context.Context, email string) (OTPPayload, error) {
 	query := "SELECT email, code, expires_at FROM verification_codes where email = ?"
 
 	row := c.db.QueryRowContext(ctx, query, email)
 
-	var codes OTP
+	var codes OTPPayload
 	err := row.Scan(&codes.Email, &codes.Code, &codes.ExpiresAt)
 	if err != nil {
-		return OTP{}, fmt.Errorf("error reading row: %v", err)
+		return OTPPayload{}, fmt.Errorf("error reading row: %v", err)
 	}
 	return codes, nil
 }
 
-func (c *GoogleIAM) insertVerificationCode(ctx context.Context, code OTP) error {
+func (c *OTP) insertVerificationCode(ctx context.Context, code OTPPayload) error {
 	query := "INSERT INTO verification_codes (email, code, expires_at) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE code=?, expires_at=?"
 
 	_, err := c.db.ExecContext(ctx, query, code.Email, code.Code, code.ExpiresAt, code.Code, code.ExpiresAt)
@@ -78,7 +83,7 @@ func (c *GoogleIAM) insertVerificationCode(ctx context.Context, code OTP) error 
 	return nil
 }
 
-func (c *GoogleIAM) deleteVerificationCode(ctx context.Context, email string) error {
+func (c *OTP) deleteVerificationCode(ctx context.Context, email string) error {
 	query := "DELETE FROM verification_codes WHERE email = ?"
 
 	_, err := c.db.ExecContext(ctx, query, email)

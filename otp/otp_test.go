@@ -1,4 +1,4 @@
-package googleiam_test
+package otp_test
 
 import (
 	"context"
@@ -9,30 +9,17 @@ import (
 	"time"
 
 	"github.com/DATA-DOG/go-sqlmock"
-	googleiam "github.com/ranesidd/iam/google_iam"
+	"github.com/ranesidd/iam/otp"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-// testHelper creates a GoogleIAM instance with a mock database
-func newTestGoogleIAM(db *sql.DB) *googleiam.GoogleIAM {
-	iam, err := googleiam.NewWithOTP(db)
-	if err != nil {
-		panic(err)
-	}
-
-	return iam
+// testHelper creates an OTP instance with a mock database
+func newTestOTP(db *sql.DB) *otp.OTP {
+	return otp.New(db)
 }
 
 func TestGenerateOTP(t *testing.T) {
-
-	env := Env{
-		googleSDKConfig: "{}",
-		googleAPIKey:    "api-key",
-	}
-	teardown := setupTest(t, env)
-	defer teardown(t, env)
-
 	tests := []struct {
 		name        string
 		email       string
@@ -71,22 +58,22 @@ func TestGenerateOTP(t *testing.T) {
 
 			tt.setupMock(mock)
 
-			iam := newTestGoogleIAM(db)
+			otpService := newTestOTP(db)
 
 			ctx := context.Background()
-			otp, err := iam.GenerateOTP(ctx, tt.email)
+			otpPayload, err := otpService.Generate(ctx, tt.email, 24)
 
 			if tt.expectError {
 				assert.Error(t, err)
 				assert.Contains(t, err.Error(), tt.errorMsg)
-				assert.Nil(t, otp)
+				assert.Nil(t, otpPayload)
 			} else {
 				assert.NoError(t, err)
-				assert.NotNil(t, otp)
-				assert.Equal(t, tt.email, otp.Email)
-				assert.Len(t, otp.Code, 6)
-				assert.True(t, otp.ExpiresAt.After(time.Now()))
-				assert.True(t, otp.ExpiresAt.Before(time.Now().Add(25*time.Hour)))
+				assert.NotNil(t, otpPayload)
+				assert.Equal(t, tt.email, otpPayload.Email)
+				assert.Len(t, otpPayload.Code, 6)
+				assert.True(t, otpPayload.ExpiresAt.After(time.Now()))
+				assert.True(t, otpPayload.ExpiresAt.Before(time.Now().Add(25*time.Hour)))
 			}
 
 			assert.NoError(t, mock.ExpectationsWereMet())
@@ -95,14 +82,6 @@ func TestGenerateOTP(t *testing.T) {
 }
 
 func TestValidateOTP(t *testing.T) {
-
-	env := Env{
-		googleSDKConfig: "{}",
-		googleAPIKey:    "api-key",
-	}
-	teardown := setupTest(t, env)
-	defer teardown(t, env)
-
 	now := time.Now().UTC()
 	validExpiry := now.Add(1 * time.Hour)
 	expiredTime := now.Add(-1 * time.Hour)
@@ -203,10 +182,10 @@ func TestValidateOTP(t *testing.T) {
 
 			tt.setupMock(mock)
 
-			iam := newTestGoogleIAM(db)
+			otpService := newTestOTP(db)
 
 			ctx := context.Background()
-			err = iam.ValidateOTP(ctx, tt.email, tt.code)
+			err = otpService.Validate(ctx, tt.email, tt.code)
 
 			if tt.expectError {
 				assert.Error(t, err)
@@ -221,14 +200,6 @@ func TestValidateOTP(t *testing.T) {
 }
 
 func TestGenerateOTP_CodeFormat(t *testing.T) {
-
-	env := Env{
-		googleSDKConfig: "{}",
-		googleAPIKey:    "api-key",
-	}
-	teardown := setupTest(t, env)
-	defer teardown(t, env)
-
 	db, mock, err := sqlmock.New()
 	require.NoError(t, err)
 	defer db.Close()
@@ -237,29 +208,21 @@ func TestGenerateOTP_CodeFormat(t *testing.T) {
 		WithArgs("test@example.com", sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg()).
 		WillReturnResult(sqlmock.NewResult(1, 1))
 
-	iam := newTestGoogleIAM(db)
+	otpService := newTestOTP(db)
 
 	ctx := context.Background()
-	otp, err := iam.GenerateOTP(ctx, "test@example.com")
+	otpPayload, err := otpService.Generate(ctx, "test@example.com", 24)
 
 	require.NoError(t, err)
-	require.NotNil(t, otp)
+	require.NotNil(t, otpPayload)
 
-	assert.Len(t, otp.Code, 6)
-	assert.Regexp(t, "^[A-Z0-9]{6}$", otp.Code)
+	assert.Len(t, otpPayload.Code, 6)
+	assert.Regexp(t, "^[A-Z0-9]{6}$", otpPayload.Code)
 
 	assert.NoError(t, mock.ExpectationsWereMet())
 }
 
 func TestGenerateOTP_ExpirationTime(t *testing.T) {
-
-	env := Env{
-		googleSDKConfig: "{}",
-		googleAPIKey:    "api-key",
-	}
-	teardown := setupTest(t, env)
-	defer teardown(t, env)
-
 	db, mock, err := sqlmock.New()
 	require.NoError(t, err)
 	defer db.Close()
@@ -268,21 +231,21 @@ func TestGenerateOTP_ExpirationTime(t *testing.T) {
 		WithArgs("test@example.com", sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg()).
 		WillReturnResult(sqlmock.NewResult(1, 1))
 
-	iam := newTestGoogleIAM(db)
+	otpService := newTestOTP(db)
 
 	ctx := context.Background()
 	beforeGenerate := time.Now().UTC()
-	otp, err := iam.GenerateOTP(ctx, "test@example.com")
+	otpPayload, err := otpService.Generate(ctx, "test@example.com", 24)
 	afterGenerate := time.Now().UTC()
 
 	require.NoError(t, err)
-	require.NotNil(t, otp)
+	require.NotNil(t, otpPayload)
 
-	expectedMin := beforeGenerate.Add(googleiam.OTPExpiration * time.Hour)
-	expectedMax := afterGenerate.Add(googleiam.OTPExpiration * time.Hour)
+	expectedMin := beforeGenerate.Add(24 * time.Hour)
+	expectedMax := afterGenerate.Add(24 * time.Hour)
 
-	assert.True(t, otp.ExpiresAt.After(expectedMin) || otp.ExpiresAt.Equal(expectedMin))
-	assert.True(t, otp.ExpiresAt.Before(expectedMax) || otp.ExpiresAt.Equal(expectedMax))
+	assert.True(t, otpPayload.ExpiresAt.After(expectedMin) || otpPayload.ExpiresAt.Equal(expectedMin))
+	assert.True(t, otpPayload.ExpiresAt.Before(expectedMax) || otpPayload.ExpiresAt.Equal(expectedMax))
 
 	assert.NoError(t, mock.ExpectationsWereMet())
 }

@@ -1,9 +1,5 @@
 package googleiam
 
-import (
-	"time"
-)
-
 type Account struct {
 	UUID          string  `json:"uuid,omitempty"`
 	DisplayName   string  `json:"display_name,omitempty"`
@@ -67,10 +63,4 @@ type SignInResponse struct {
 
 type SignOutRequest struct {
 	UUID string `json:"uuid"`
-}
-
-type OTP struct {
-	Email     string    `json:"email,omitempty"`
-	Code      string    `json:"code,omitempty"`
-	ExpiresAt time.Time `json:"expires_at,omitempty"`
 }
