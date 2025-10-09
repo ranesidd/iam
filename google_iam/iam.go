@@ -265,11 +265,16 @@ func (c *GoogleIAM) SignOut(ctx context.Context, accountUUID string) error {
 	return nil
 }
 
-func (c *GoogleIAM) SignIn(ctx context.Context, email, password string) (*SignInResponse, error) {
+func (c *GoogleIAM) SignIn(ctx context.Context, email, password string, tenantID ...string) (*SignInResponse, error) {
 	request := SignInRequest{
 		Email:             email,
 		Password:          password,
 		ReturnSecureToken: true,
+	}
+
+	// Add tenant ID if provided
+	if len(tenantID) > 0 && !common.IsEmpty(tenantID[0]) {
+		request.TenantID = &tenantID[0]
 	}
 
 	marshalledRequest, err := json.Marshal(request)

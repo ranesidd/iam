@@ -36,18 +36,11 @@ type UpdatePasswordRequest struct {
 	NewPassword     string `json:"new_password"`
 }
 
-type ResetPasswordRequest struct {
-	Email string `json:"email"`
-}
-
-type InitiateAccountRequest struct {
-	Email string `json:"email"`
-}
-
 type SignInRequest struct {
-	Email             string `json:"email"`
-	Password          string `json:"password"`
-	ReturnSecureToken bool   `json:"returnSecureToken"`
+	Email             string  `json:"email"`
+	Password          string  `json:"password"`
+	ReturnSecureToken bool    `json:"returnSecureToken"`
+	TenantID          *string `json:"tenantId,omitempty"`
 }
 
 type SignInResponse struct {
