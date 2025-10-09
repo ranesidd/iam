@@ -16,6 +16,8 @@ This library aims to provide a consistent, easy-to-use interface for common IAM 
 - **Password Management**: Password updates and reset link generation
 - **Account Verification**: Email-based account existence checks
 - **Token Operations**: ID token verification and refresh token revocation
+- **Multi-Tenancy Support**: Optional tenant isolation for all IAM operations (Google Identity Platform)
+- **Tenant Management**: Create and delete Identity Platform tenants programmatically
 
 ### OTP (One-Time Password)
 - **Provider-Independent**: Standalone OTP package that works with any IAM provider
@@ -68,6 +70,104 @@ func main() {
     }
     
     log.Printf("Created account: %s", account.Account.Email)
+}
+```
+
+### Multi-Tenancy Support (Google Identity Platform)
+
+All IAM operations support optional tenant isolation through Identity Platform's multi-tenancy feature:
+
+```go
+package main
+
+import (
+    "context"
+    "log"
+
+    "github.com/ranesidd/iam/google_iam"
+)
+
+func main() {
+    iam, err := googleiam.New()
+    if err != nil {
+        log.Fatal(err)
+    }
+
+    ctx := context.Background()
+    tenantID := "tenant-id-123"
+
+    // Create account in a specific tenant
+    request := googleiam.CreateAccountRequest{
+        Email:       "user@example.com",
+        Password:    "securepassword",
+        DisplayName: "John Doe",
+        TenantID:    &tenantID, // Optional: specify tenant ID
+    }
+    account, err := iam.CreateAccount(ctx, request)
+    if err != nil {
+        log.Fatal(err)
+    }
+
+    // Sign in to a tenant
+    response, err := iam.SignIn(ctx, "user@example.com", "password", tenantID)
+    if err != nil {
+        log.Fatal(err)
+    }
+    log.Printf("Signed in: %s", response.Email)
+
+    // All methods support optional tenantID parameter
+    user, err := iam.GetAccount(ctx, account.Account.UUID, tenantID)
+    if err != nil {
+        log.Fatal(err)
+    }
+    log.Printf("User: %s", user.Email)
+}
+```
+
+**Backward Compatible**: All tenant parameters are optional. Omitting them uses the default project-level authentication.
+
+### Tenant Management
+
+Create and manage Identity Platform tenants programmatically:
+
+```go
+package main
+
+import (
+    "context"
+    "log"
+
+    "github.com/ranesidd/iam/google_iam"
+)
+
+func main() {
+    iam, err := googleiam.New()
+    if err != nil {
+        log.Fatal(err)
+    }
+
+    ctx := context.Background()
+    allowPasswordSignUp := true
+    enableEmailLink := false
+
+    // Create a new tenant
+    tenantReq := googleiam.CreateTenantRequest{
+        DisplayName:           "My Application Tenant",
+        AllowPasswordSignUp:   &allowPasswordSignUp,
+        EnableEmailLinkSignIn: &enableEmailLink,
+    }
+    tenant, err := iam.CreateTenant(ctx, tenantReq)
+    if err != nil {
+        log.Fatal(err)
+    }
+    log.Printf("Created tenant: %s (ID: %s)", tenant.DisplayName, tenant.ID)
+
+    // Delete a tenant
+    err = iam.DeleteTenant(ctx, tenant.ID)
+    if err != nil {
+        log.Fatal(err)
+    }
+    log.Println("Tenant deleted successfully")
 }
 ```
 
@@ -170,6 +270,10 @@ export GOOGLE_SDK_CONFIG='{"type":"service_account","project_id":"your-project",
 export GOOGLE_API_KEY="your-firebase-api-key"
 ```
 
+**For Multi-Tenancy (Google Identity Platform):**
+
+Multi-tenancy requires upgrading to Firebase Authentication with Identity Platform (GCP paid tier). No additional environment variables needed - tenant IDs are passed per operation or managed via `CreateTenant()` / `DeleteTenant()` methods.
+
 **For OTP functionality:**
 
 No environment variables required! The OTP package is standalone and only requires a database connection.
@@ -190,23 +294,39 @@ CREATE TABLE verification_codes (
 
 ### Google IAM Operations
 
+**Account Management**
 ```go
-// Account management
-AccountExists(ctx context.Context, email string) (bool, error)
+AccountExists(ctx context.Context, email string, tenantID ...string) (bool, error)
 CreateAccount(ctx context.Context, account CreateAccountRequest) (*CreateAccountResponse, error)
-GetAccount(ctx context.Context, accountUID string) (*Account, error)
-UpdateAccount(ctx context.Context, accountUID string, account UpdateAccountRequest) (*UpdateAccountResponse, error)
-DeleteAccount(ctx context.Context, accountUID string) error
-
-// Authentication
-SignIn(ctx context.Context, email, password string) (*SignInResponse, error)
-SignOut(ctx context.Context, accountUUID string) error
-VerifyToken(ctx context.Context, token string) error
-
-// Password operations
-UpdateAccountPassword(ctx context.Context, accountUID string, request UpdatePasswordRequest) (*SignInResponse, error)
-ResetPasswordLink(ctx context.Context, email string) (*string, error)
+GetAccount(ctx context.Context, accountUID string, tenantID ...string) (*Account, error)
+UpdateAccount(ctx context.Context, accountUID string, account UpdateAccountRequest, tenantID ...string) (*UpdateAccountResponse, error)
+DeleteAccount(ctx context.Context, accountUID string, tenantID ...string) error
 ```
+
+**Authentication**
+```go
+SignIn(ctx context.Context, email, password string, tenantID ...string) (*SignInResponse, error)
+SignOut(ctx context.Context, accountUUID string, tenantID ...string) error
+VerifyToken(ctx context.Context, token string, tenantID ...string) error
+Initiate(ctx context.Context, email string, tenantID ...string) error
+```
+
+**Password Operations**
+```go
+UpdateAccountPassword(ctx context.Context, accountUID string, request UpdatePasswordRequest) (*SignInResponse, error)
+ResetPasswordLink(ctx context.Context, email string, tenantID ...string) (*string, error)
+```
+
+**Tenant Management**
+```go
+CreateTenant(ctx context.Context, request CreateTenantRequest) (*TenantInfo, error)
+DeleteTenant(ctx context.Context, tenantID string) error
+```
+
+**Notes:**
+- All `tenantID` parameters are optional (variadic) - omit for default project-level authentication
+- `CreateAccountRequest`, `UpdatePasswordRequest`, and `SignInRequest` include optional `TenantID *string` field
+- Multi-tenancy requires Firebase Authentication with Identity Platform (paid tier)
 
 ### OTP Package (`github.com/ranesidd/iam/otp`)
 

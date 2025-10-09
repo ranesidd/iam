@@ -16,6 +16,7 @@ type CreateAccountRequest struct {
 	Password    string  `json:"password"`
 	Phone       *string `json:"phone,omitempty"`
 	PhotoURL    *string `json:"photo_url,omitempty"`
+	TenantID    *string `json:"tenant_id,omitempty"`
 }
 
 type CreateAccountResponse struct {
@@ -32,8 +33,9 @@ type UpdateAccountResponse struct {
 }
 
 type UpdatePasswordRequest struct {
-	CurrentPassword string `json:"current_password"`
-	NewPassword     string `json:"new_password"`
+	CurrentPassword string  `json:"current_password"`
+	NewPassword     string  `json:"new_password"`
+	TenantID        *string `json:"tenant_id,omitempty"`
 }
 
 type SignInRequest struct {
@@ -56,4 +58,17 @@ type SignInResponse struct {
 
 type SignOutRequest struct {
 	UUID string `json:"uuid"`
+}
+
+type CreateTenantRequest struct {
+	DisplayName           string `json:"display_name"`
+	AllowPasswordSignUp   *bool  `json:"allow_password_sign_up,omitempty"`
+	EnableEmailLinkSignIn *bool  `json:"enable_email_link_sign_in,omitempty"`
+}
+
+type TenantInfo struct {
+	ID                    string `json:"id"`
+	DisplayName           string `json:"display_name"`
+	AllowPasswordSignUp   bool   `json:"allow_password_sign_up"`
+	EnableEmailLinkSignIn bool   `json:"enable_email_link_sign_in"`
 }

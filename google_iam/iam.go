@@ -17,8 +17,41 @@ var (
 	signInLink = "https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=%s"
 )
 
-func (c *GoogleIAM) AccountExists(ctx context.Context, email string) (bool, error) {
-	client, err := c.app.Auth(ctx)
+// userManagementClient interface abstracts *auth.Client and *auth.TenantClient
+// Both types implement these methods, allowing us to use them interchangeably
+type userManagementClient interface {
+	CreateUser(ctx context.Context, user *auth.UserToCreate) (*auth.UserRecord, error)
+	GetUser(ctx context.Context, uid string) (*auth.UserRecord, error)
+	GetUserByEmail(ctx context.Context, email string) (*auth.UserRecord, error)
+	UpdateUser(ctx context.Context, uid string, user *auth.UserToUpdate) (*auth.UserRecord, error)
+	DeleteUser(ctx context.Context, uid string) error
+	RevokeRefreshTokens(ctx context.Context, uid string) error
+	VerifyIDTokenAndCheckRevoked(ctx context.Context, idToken string) (*auth.Token, error)
+	PasswordResetLink(ctx context.Context, email string) (string, error)
+}
+
+// getAuthClient returns either a tenant-aware client or the default auth client
+// Both *auth.Client and *auth.TenantClient satisfy the userManagementClient interface
+func (c *GoogleIAM) getAuthClient(ctx context.Context, tenantID *string) (userManagementClient, error) {
+	authClient, err := c.app.Auth(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	if tenantID != nil && !common.IsEmpty(*tenantID) {
+		return authClient.TenantManager.AuthForTenant(*tenantID)
+	}
+
+	return authClient, nil
+}
+
+func (c *GoogleIAM) AccountExists(ctx context.Context, email string, tenantID ...string) (bool, error) {
+	var tid *string
+	if len(tenantID) > 0 {
+		tid = &tenantID[0]
+	}
+
+	client, err := c.getAuthClient(ctx, tid)
 	if err != nil {
 		return false, err
 	}
@@ -28,7 +61,6 @@ func (c *GoogleIAM) AccountExists(ctx context.Context, email string) (bool, erro
 		if strings.Contains(err.Error(), "cannot find user") {
 			return false, nil
 		}
-
 		return false, err
 	}
 
@@ -36,7 +68,7 @@ func (c *GoogleIAM) AccountExists(ctx context.Context, email string) (bool, erro
 }
 
 func (c *GoogleIAM) CreateAccount(ctx context.Context, account CreateAccountRequest) (*CreateAccountResponse, error) {
-	client, err := c.app.Auth(ctx)
+	client, err := c.getAuthClient(ctx, account.TenantID)
 	if err != nil {
 		return nil, err
 	}
@@ -82,7 +114,13 @@ func (c *GoogleIAM) CreateAccount(ctx context.Context, account CreateAccountRequ
 		newAccount.Account.PhotoURL = &user.PhotoURL
 	}
 
-	signInResponse, err := c.SignIn(ctx, account.Email, account.Password)
+	// Pass tenantID to SignIn if provided
+	var signInResponse *SignInResponse
+	if account.TenantID != nil && !common.IsEmpty(*account.TenantID) {
+		signInResponse, err = c.SignIn(ctx, account.Email, account.Password, *account.TenantID)
+	} else {
+		signInResponse, err = c.SignIn(ctx, account.Email, account.Password)
+	}
 	if err != nil {
 		signInErr := errors.New("account created, please sign in")
 		return nil, signInErr
@@ -92,8 +130,13 @@ func (c *GoogleIAM) CreateAccount(ctx context.Context, account CreateAccountRequ
 	return &newAccount, nil
 }
 
-func (c *GoogleIAM) GetAccount(ctx context.Context, accountUID string) (*Account, error) {
-	client, err := c.app.Auth(ctx)
+func (c *GoogleIAM) GetAccount(ctx context.Context, accountUID string, tenantID ...string) (*Account, error) {
+	var tid *string
+	if len(tenantID) > 0 {
+		tid = &tenantID[0]
+	}
+
+	client, err := c.getAuthClient(ctx, tid)
 	if err != nil {
 		return nil, err
 	}
@@ -122,8 +165,13 @@ func (c *GoogleIAM) GetAccount(ctx context.Context, accountUID string) (*Account
 	return &account, nil
 }
 
-func (c *GoogleIAM) UpdateAccount(ctx context.Context, accountUID string, account UpdateAccountRequest) (*UpdateAccountResponse, error) {
-	client, err := c.app.Auth(ctx)
+func (c *GoogleIAM) UpdateAccount(ctx context.Context, accountUID string, account UpdateAccountRequest, tenantID ...string) (*UpdateAccountResponse, error) {
+	var tid *string
+	if len(tenantID) > 0 {
+		tid = &tenantID[0]
+	}
+
+	client, err := c.getAuthClient(ctx, tid)
 	if err != nil {
 		return nil, err
 	}
@@ -157,18 +205,18 @@ func (c *GoogleIAM) UpdateAccount(ctx context.Context, accountUID string, accoun
 	return &updatedAccount, nil
 }
 
-func (c *GoogleIAM) DeleteAccount(ctx context.Context, accountUID string) error {
-	client, err := c.app.Auth(ctx)
+func (c *GoogleIAM) DeleteAccount(ctx context.Context, accountUID string, tenantID ...string) error {
+	var tid *string
+	if len(tenantID) > 0 {
+		tid = &tenantID[0]
+	}
+
+	client, err := c.getAuthClient(ctx, tid)
 	if err != nil {
 		return err
 	}
 
-	err = client.DeleteUser(ctx, accountUID)
-	if err != nil {
-		return err
-	}
-
-	return nil
+	return client.DeleteUser(ctx, accountUID)
 }
 
 func (c *GoogleIAM) UpdateAccountPassword(
@@ -176,17 +224,30 @@ func (c *GoogleIAM) UpdateAccountPassword(
 	accountUID string,
 	request UpdatePasswordRequest,
 ) (*SignInResponse, error) {
-	client, err := c.app.Auth(ctx)
+	client, err := c.getAuthClient(ctx, request.TenantID)
 	if err != nil {
 		return nil, err
 	}
 
-	account, err := c.GetAccount(ctx, accountUID)
+	// Pass tenantID to GetAccount if provided
+	var account *Account
+	if request.TenantID != nil && !common.IsEmpty(*request.TenantID) {
+		account, err = c.GetAccount(ctx, accountUID, *request.TenantID)
+	} else {
+		account, err = c.GetAccount(ctx, accountUID)
+	}
 	if err != nil {
 		return nil, err
 	}
 
-	if _, err := c.SignIn(ctx, account.Email, request.CurrentPassword); err != nil {
+	// Verify current password by signing in
+	var signInErr error
+	if request.TenantID != nil && !common.IsEmpty(*request.TenantID) {
+		_, signInErr = c.SignIn(ctx, account.Email, request.CurrentPassword, *request.TenantID)
+	} else {
+		_, signInErr = c.SignIn(ctx, account.Email, request.CurrentPassword)
+	}
+	if signInErr != nil {
 		return nil, errors.New("an error occured while updating password")
 	}
 
@@ -198,17 +259,27 @@ func (c *GoogleIAM) UpdateAccountPassword(
 		return nil, err
 	}
 
-	signInResponse, err := c.SignIn(ctx, account.Email, request.NewPassword)
+	// Sign in with new password
+	var signInResponse *SignInResponse
+	if request.TenantID != nil && !common.IsEmpty(*request.TenantID) {
+		signInResponse, err = c.SignIn(ctx, account.Email, request.NewPassword, *request.TenantID)
+	} else {
+		signInResponse, err = c.SignIn(ctx, account.Email, request.NewPassword)
+	}
 	if err != nil {
-		signInErr := errors.New("password updated, please sign in again")
-		return nil, signInErr
+		return nil, errors.New("password updated, please sign in again")
 	}
 
 	return signInResponse, nil
 }
 
-func (c *GoogleIAM) ResetPasswordLink(ctx context.Context, email string) (*string, error) {
-	client, err := c.app.Auth(ctx)
+func (c *GoogleIAM) ResetPasswordLink(ctx context.Context, email string, tenantID ...string) (*string, error) {
+	var tid *string
+	if len(tenantID) > 0 {
+		tid = &tenantID[0]
+	}
+
+	client, err := c.getAuthClient(ctx, tid)
 	if err != nil {
 		return nil, err
 	}
@@ -221,8 +292,15 @@ func (c *GoogleIAM) ResetPasswordLink(ctx context.Context, email string) (*strin
 	return &actionLink, nil
 }
 
-func (c *GoogleIAM) Initiate(ctx context.Context, email string) error {
-	exists, err := c.AccountExists(ctx, email)
+func (c *GoogleIAM) Initiate(ctx context.Context, email string, tenantID ...string) error {
+	var err error
+	var exists bool
+
+	if len(tenantID) > 0 {
+		exists, err = c.AccountExists(ctx, email, tenantID[0])
+	} else {
+		exists, err = c.AccountExists(ctx, email)
+	}
 	if err != nil {
 		return err
 	}
@@ -237,32 +315,33 @@ func (c *GoogleIAM) Initiate(ctx context.Context, email string) error {
 	return nil
 }
 
-func (c *GoogleIAM) VerifyToken(ctx context.Context, token string) error {
-	client, err := c.app.Auth(ctx)
+func (c *GoogleIAM) VerifyToken(ctx context.Context, token string, tenantID ...string) error {
+	var tid *string
+	if len(tenantID) > 0 {
+		tid = &tenantID[0]
+	}
+
+	client, err := c.getAuthClient(ctx, tid)
 	if err != nil {
 		return err
 	}
 
 	_, err = client.VerifyIDTokenAndCheckRevoked(ctx, token)
-	if err != nil {
-		return err
-	}
-
-	return nil
+	return err
 }
 
-func (c *GoogleIAM) SignOut(ctx context.Context, accountUUID string) error {
-	client, err := c.app.Auth(ctx)
+func (c *GoogleIAM) SignOut(ctx context.Context, accountUUID string, tenantID ...string) error {
+	var tid *string
+	if len(tenantID) > 0 {
+		tid = &tenantID[0]
+	}
+
+	client, err := c.getAuthClient(ctx, tid)
 	if err != nil {
 		return err
 	}
 
-	err = client.RevokeRefreshTokens(ctx, accountUUID)
-	if err != nil {
-		return err
-	}
-
-	return nil
+	return client.RevokeRefreshTokens(ctx, accountUUID)
 }
 
 func (c *GoogleIAM) SignIn(ctx context.Context, email, password string, tenantID ...string) (*SignInResponse, error) {
@@ -294,4 +373,55 @@ func (c *GoogleIAM) SignIn(ctx context.Context, email, password string, tenantID
 		&response)
 
 	return &response, err
+}
+
+func (c *GoogleIAM) CreateTenant(ctx context.Context, request CreateTenantRequest) (*TenantInfo, error) {
+	if common.IsEmpty(request.DisplayName) {
+		return nil, errors.New("display name is required")
+	}
+
+	authClient, err := c.app.Auth(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	// Build tenant configuration using builder pattern
+	tenantToCreate := (&auth.TenantToCreate{}).DisplayName(request.DisplayName)
+
+	if request.AllowPasswordSignUp != nil {
+		tenantToCreate = tenantToCreate.AllowPasswordSignUp(*request.AllowPasswordSignUp)
+	}
+
+	if request.EnableEmailLinkSignIn != nil {
+		tenantToCreate = tenantToCreate.EnableEmailLinkSignIn(*request.EnableEmailLinkSignIn)
+	}
+
+	// Create tenant
+	tenant, err := authClient.TenantManager.CreateTenant(ctx, tenantToCreate)
+	if err != nil {
+		return nil, err
+	}
+
+	// Map to TenantInfo response
+	tenantInfo := &TenantInfo{
+		ID:                    tenant.ID,
+		DisplayName:           tenant.DisplayName,
+		AllowPasswordSignUp:   tenant.AllowPasswordSignUp,
+		EnableEmailLinkSignIn: tenant.EnableEmailLinkSignIn,
+	}
+
+	return tenantInfo, nil
+}
+
+func (c *GoogleIAM) DeleteTenant(ctx context.Context, tenantID string) error {
+	if common.IsEmpty(tenantID) {
+		return errors.New("tenant ID is required")
+	}
+
+	authClient, err := c.app.Auth(ctx)
+	if err != nil {
+		return err
+	}
+
+	return authClient.TenantManager.DeleteTenant(ctx, tenantID)
 }
