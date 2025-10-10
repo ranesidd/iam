@@ -6,7 +6,6 @@ import (
 	"os"
 
 	firebase "firebase.google.com/go"
-	"google.golang.org/api/option"
 )
 
 type GoogleIAM struct {
@@ -32,15 +31,19 @@ func New() (*GoogleIAM, error) {
 }
 
 func initializeGoogleAdminSDK() (*firebase.App, error) {
-	goolgeConfig := os.Getenv("GOOGLE_SDK_CONFIG")
-	if len(goolgeConfig) == 0 {
-		return nil, errors.New("GOOGLE_SDK_CONFIG not found in environment")
+	projectID := os.Getenv("GOOGLE_PROJECT_ID")
+	if len(projectID) == 0 {
+		return nil, errors.New("GOOGLE_PROJECT_ID not found in environment")
 	}
 
-	opt := option.WithCredentialsJSON([]byte(goolgeConfig))
-	application, err := firebase.NewApp(context.Background(), nil, opt)
+	config := &firebase.Config{
+		ProjectID: projectID,
+	}
+
+	// Uses Application Default Credentials (ADC)
+	application, err := firebase.NewApp(context.Background(), config)
 	if err != nil {
-		return nil, errors.New(err.Error())
+		return nil, err
 	}
 
 	return application, nil

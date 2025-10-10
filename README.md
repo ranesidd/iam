@@ -266,9 +266,19 @@ export PROVIDER_GCP=true  # Enable Google Cloud Platform provider
 **For Google Firebase provider:**
 
 ```bash
-export GOOGLE_SDK_CONFIG='{"type":"service_account","project_id":"your-project",...}'
+export GOOGLE_PROJECT_ID="your-firebase-project-id"
 export GOOGLE_API_KEY="your-firebase-api-key"
+
+# Credentials via ADC (choose one):
+
+# Option 1: Service account file
+export GOOGLE_APPLICATION_CREDENTIALS="/path/to/serviceAccount.json"
+
+# Option 2: gcloud CLI (for local development)
+gcloud auth application-default login
 ```
+
+**Note**: When running on Google Cloud (App Engine, Cloud Run, Cloud Functions, GKE), ADC automatically uses the environment's default service account - no additional configuration needed.
 
 **For Multi-Tenancy (Google Identity Platform):**
 
