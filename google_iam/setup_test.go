@@ -9,85 +9,74 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-const (
-	validEnv         = ".env"
-	invalidApiKeyEnv = "invalid_api.env"
-	invalidSDK       = "invalid_sdk.env"
-)
-
 type Env struct {
-	googleSDKConfig string
+	googleProjectID string
 	googleAPIKey    string
 }
 
 func TestNew(t *testing.T) {
 	table := []struct {
 		name        string
-		envfile     string
 		env         Env
 		expectedErr error
 	}{
 		{
-			name:    "Valid Environment",
-			envfile: validEnv,
+			name: "Valid Environment",
 			env: Env{
-				googleSDKConfig: "{}",
+				googleProjectID: "test-project-id",
 				googleAPIKey:    "api-key",
 			},
 			expectedErr: nil,
 		},
 		{
-			name:    "Missing SDK Config",
-			envfile: validEnv,
+			name: "Missing Project ID",
 			env: Env{
 				googleAPIKey: "api-key",
 			},
-			expectedErr: errors.New("GOOGLE_SDK_CONFIG not found in environment"),
+			expectedErr: errors.New("GOOGLE_PROJECT_ID not found in environment"),
 		},
 		{
-			name:    "Missing API Key",
-			envfile: validEnv,
+			name: "Missing API Key",
 			env: Env{
-				googleSDKConfig: "{}",
+				googleProjectID: "test-project-id",
 			},
 			expectedErr: errors.New("GOOGLE_API_KEY not found in environment"),
 		},
 	}
 
 	for _, test := range table {
-
 		t.Run(test.name, func(t *testing.T) {
 			teardown := setupTest(t, test.env)
 			defer teardown(t, test.env)
 
 			_, err := googleiam.New()
-			assert.Equal(t, err, test.expectedErr)
+			assert.Equal(t, test.expectedErr, err)
 		})
 	}
 }
 
 func setupTest(t *testing.T, env Env) func(t *testing.T, env Env) {
+	// Save original environment variables
+	origProjectID := os.Getenv("GOOGLE_PROJECT_ID")
+	origAPIKey := os.Getenv("GOOGLE_API_KEY")
 
-	// Set keys to tmp_* if already set in env
-	// overwrite with keys for test
-	googAPIKey := os.Getenv("GOOGLE_API_KEY")
-	os.Setenv("tmp_GOOGLE_API_KEY", googAPIKey)
-
-	googSDKConfig := os.Getenv("GOOGLE_SDK_CONFIG")
-	os.Setenv("tmp_GOOGLE_SDK_CONFIG", googSDKConfig)
-
+	// Set test environment variables
+	os.Setenv("GOOGLE_PROJECT_ID", env.googleProjectID)
 	os.Setenv("GOOGLE_API_KEY", env.googleAPIKey)
-	os.Setenv("GOOGLE_SDK_CONFIG", env.googleSDKConfig)
 
+	// Return cleanup function
 	return func(t *testing.T, env Env) {
-		// Reset keys back to original
-		tmpgoogAPIKey := os.Getenv("tmp_GOOGLE_API_KEY")
-		os.Setenv("GOOGLE_API_KEY", tmpgoogAPIKey)
+		// Restore original environment variables
+		if origProjectID != "" {
+			os.Setenv("GOOGLE_PROJECT_ID", origProjectID)
+		} else {
+			os.Unsetenv("GOOGLE_PROJECT_ID")
+		}
 
-		tmpgoogSDKConfig := os.Getenv("tmp_GOOGLE_SDK_CONFIG")
-		os.Setenv("GOOGLE_SDK_CONFIG", tmpgoogSDKConfig)
-
-		os.Unsetenv("tmp_GOOGLE_API_KEY")
-		os.Unsetenv("tmp_GOOGLE_SDK_CONFIG")
+		if origAPIKey != "" {
+			os.Setenv("GOOGLE_API_KEY", origAPIKey)
+		} else {
+			os.Unsetenv("GOOGLE_API_KEY")
+		}
 	}
 }
