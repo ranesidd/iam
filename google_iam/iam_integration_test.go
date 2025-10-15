@@ -286,6 +286,70 @@ func TestTokenVerification(t *testing.T) {
 	})
 }
 
+func TestRefreshToken(t *testing.T) {
+	client := setupIntegrationTest(t)
+	ctx := context.Background()
+
+	email := generateTestEmail()
+	password := "testPassword123!"
+	displayName := generateTestDisplayName()
+
+	// Create test account
+	createReq := googleiam.CreateAccountRequest{
+		Email:       email,
+		Password:    password,
+		DisplayName: displayName,
+	}
+
+	createResp, err := client.CreateAccount(ctx, createReq)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		cleanupTestUser(t, client, createResp.Account.UUID)
+	})
+
+	// Sign in to get initial tokens
+	signInResp, err := client.SignIn(ctx, email, password)
+	require.NoError(t, err)
+	assert.NotEmpty(t, signInResp.IDToken)
+	assert.NotEmpty(t, signInResp.RefreshToken)
+
+	t.Run("refresh token with valid refresh token", func(t *testing.T) {
+		refreshResp, err := client.RefreshToken(ctx, signInResp.RefreshToken)
+		require.NoError(t, err)
+
+		// Verify response contains all expected fields
+		assert.NotEmpty(t, refreshResp.IDToken, "ID token should not be empty")
+		assert.NotEmpty(t, refreshResp.RefreshToken, "Refresh token should not be empty")
+		assert.NotEmpty(t, refreshResp.ExpiresIn, "ExpiresIn should not be empty")
+		assert.NotEmpty(t, refreshResp.TokenType, "TokenType should not be empty")
+		assert.NotEmpty(t, refreshResp.UserID, "UserID should not be empty")
+		assert.NotEmpty(t, refreshResp.ProjectID, "ProjectID should not be empty")
+
+		// Verify UserID matches the created account
+		assert.Equal(t, createResp.Account.UUID, refreshResp.UserID, "UserID should match the account")
+
+		// Verify the refreshed ID token is valid
+		err = client.VerifyToken(ctx, refreshResp.IDToken)
+		assert.NoError(t, err, "Refreshed ID token should be valid")
+
+		// Verify the new refresh token works
+		secondRefreshResp, err := client.RefreshToken(ctx, refreshResp.RefreshToken)
+		require.NoError(t, err)
+		assert.NotEmpty(t, secondRefreshResp.IDToken)
+	})
+
+	t.Run("refresh token with invalid refresh token", func(t *testing.T) {
+		_, err := client.RefreshToken(ctx, "invalid-refresh-token")
+		assert.Error(t, err, "Should fail with invalid refresh token")
+	})
+
+	t.Run("refresh token with empty refresh token", func(t *testing.T) {
+		_, err := client.RefreshToken(ctx, "")
+		assert.Error(t, err, "Should fail with empty refresh token")
+		assert.Contains(t, err.Error(), "refresh token is required")
+	})
+}
+
 func TestSignOut(t *testing.T) {
 	client := setupIntegrationTest(t)
 	ctx := context.Background()
@@ -738,6 +802,72 @@ func TestSignOutWithTenant(t *testing.T) {
 	// Sign out to revoke refresh tokens
 	err = client.SignOut(ctx, createResp.Account.UUID, tenant.ID)
 	assert.NoError(t, err)
+}
+
+func TestRefreshTokenWithTenant(t *testing.T) {
+	client := setupIntegrationTest(t)
+	ctx := context.Background()
+
+	tenant := createTestTenant(t, client)
+
+	email := generateTestEmail()
+	password := "testPassword123!"
+	displayName := generateTestDisplayName()
+
+	// Create account in tenant
+	createReq := googleiam.CreateAccountRequest{
+		Email:       email,
+		Password:    password,
+		DisplayName: displayName,
+		TenantID:    &tenant.ID,
+	}
+
+	createResp, err := client.CreateAccount(ctx, createReq)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		cleanupTestUser(t, client, createResp.Account.UUID, tenant.ID)
+	})
+
+	// Sign in to tenant to get tokens
+	signInResp, err := client.SignIn(ctx, email, password, tenant.ID)
+	require.NoError(t, err)
+	assert.NotEmpty(t, signInResp.IDToken)
+	assert.NotEmpty(t, signInResp.RefreshToken)
+
+	t.Run("refresh token preserves tenant context", func(t *testing.T) {
+		// Refresh the token - tenant context is embedded in the refresh token
+		refreshResp, err := client.RefreshToken(ctx, signInResp.RefreshToken)
+		require.NoError(t, err)
+
+		// Verify response contains all expected fields
+		assert.NotEmpty(t, refreshResp.IDToken)
+		assert.NotEmpty(t, refreshResp.RefreshToken)
+		assert.NotEmpty(t, refreshResp.UserID)
+
+		// Verify the new ID token works with the tenant
+		err = client.VerifyToken(ctx, refreshResp.IDToken, tenant.ID)
+		assert.NoError(t, err, "Refreshed token should work with original tenant")
+
+		// Verify the refreshed token has tenant context (same user ID)
+		assert.Equal(t, createResp.Account.UUID, refreshResp.UserID, "UserID should match the tenant-scoped account")
+	})
+
+	t.Run("multiple refresh cycles maintain tenant context", func(t *testing.T) {
+		currentRefreshToken := signInResp.RefreshToken
+
+		// Perform multiple refresh cycles
+		for i := 0; i < 3; i++ {
+			refreshResp, err := client.RefreshToken(ctx, currentRefreshToken)
+			require.NoError(t, err, "Refresh cycle %d should succeed", i+1)
+
+			// Verify token works with tenant
+			err = client.VerifyToken(ctx, refreshResp.IDToken, tenant.ID)
+			assert.NoError(t, err, "Token from refresh cycle %d should work with tenant", i+1)
+
+			// Use new refresh token for next iteration
+			currentRefreshToken = refreshResp.RefreshToken
+		}
+	})
 }
 
 func TestInitiateWithTenant(t *testing.T) {
