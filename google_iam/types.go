@@ -60,6 +60,20 @@ type SignOutRequest struct {
 	UUID string `json:"uuid"`
 }
 
+type RefreshTokenRequest struct {
+	GrantType    string `json:"grant_type"`
+	RefreshToken string `json:"refresh_token"`
+}
+
+type RefreshTokenResponse struct {
+	ExpiresIn    string `json:"expires_in"`
+	TokenType    string `json:"token_type"`
+	RefreshToken string `json:"refresh_token"`
+	IDToken      string `json:"id_token"`
+	UserID       string `json:"user_id"`
+	ProjectID    string `json:"project_id"`
+}
+
 type CreateTenantRequest struct {
 	DisplayName           string `json:"display_name"`
 	AllowPasswordSignUp   *bool  `json:"allow_password_sign_up,omitempty"`

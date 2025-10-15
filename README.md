@@ -15,7 +15,7 @@ This library aims to provide a consistent, easy-to-use interface for common IAM 
 - **Authentication**: Sign in/out operations with secure token management
 - **Password Management**: Password updates and reset link generation
 - **Account Verification**: Email-based account existence checks
-- **Token Operations**: ID token verification and refresh token revocation
+- **Token Operations**: ID token verification, token refresh, and refresh token revocation
 - **Multi-Tenancy Support**: Optional tenant isolation for all IAM operations (Google Identity Platform)
 - **Tenant Management**: Create and delete Identity Platform tenants programmatically
 
@@ -72,6 +72,50 @@ func main() {
     log.Printf("Created account: %s", account.Account.Email)
 }
 ```
+
+### Token Refresh
+
+Refresh an expired ID token using the refresh token:
+
+```go
+package main
+
+import (
+    "context"
+    "log"
+
+    "github.com/ranesidd/iam/google_iam"
+)
+
+func main() {
+    iam, err := googleiam.New()
+    if err != nil {
+        log.Fatal(err)
+    }
+
+    ctx := context.Background()
+
+    // Sign in to get tokens
+    signInResponse, err := iam.SignIn(ctx, "user@example.com", "password")
+    if err != nil {
+        log.Fatal(err)
+    }
+
+    // Use the ID token for authenticated requests...
+    // Later, when the token expires (after 1 hour), refresh it:
+
+    refreshResponse, err := iam.RefreshToken(ctx, signInResponse.RefreshToken)
+    if err != nil {
+        log.Fatal(err)
+    }
+
+    log.Printf("New ID Token: %s", refreshResponse.IDToken)
+    log.Printf("New Refresh Token: %s", refreshResponse.RefreshToken)
+    log.Printf("Token expires in: %s seconds", refreshResponse.ExpiresIn)
+}
+```
+
+**Note**: The tenant context (if any) is automatically preserved from the original sign-in - the refresh token already contains tenant information.
 
 ### Multi-Tenancy Support (Google Identity Platform)
 
@@ -269,14 +313,13 @@ export PROVIDER_GCP=true  # Enable Google Cloud Platform provider
 export GOOGLE_PROJECT_ID="your-firebase-project-id"
 export GOOGLE_API_KEY="your-firebase-api-key"
 
-# Credentials via ADC (choose one):
-
-# Option 1: Service account file
-export GOOGLE_APPLICATION_CREDENTIALS="/path/to/serviceAccount.json"
-
-# Option 2: gcloud CLI (for local development)
-gcloud auth application-default login
+# Credentials via ADC (for local development):
+gcloud auth application-default login --impersonate-service-account=<service-account>@PROJECT-ID.iam.gserviceaccount.com
 ```
+
+**Required IAM Roles:**
+- The service account must have the **"Identity Toolkit Admin"** (`roles/identitytoolkit.admin`) role
+- Your login account must have the **"Service Account Token Creator"** (`roles/iam.serviceAccountTokenCreator`) role to impersonate the service account
 
 **Note**: When running on Google Cloud (App Engine, Cloud Run, Cloud Functions, GKE), ADC automatically uses the environment's default service account - no additional configuration needed.
 
@@ -317,6 +360,7 @@ DeleteAccount(ctx context.Context, accountUID string, tenantID ...string) error
 ```go
 SignIn(ctx context.Context, email, password string, tenantID ...string) (*SignInResponse, error)
 SignOut(ctx context.Context, accountUUID string, tenantID ...string) error
+RefreshToken(ctx context.Context, refreshToken string) (*RefreshTokenResponse, error)
 VerifyToken(ctx context.Context, token string, tenantID ...string) error
 Initiate(ctx context.Context, email string, tenantID ...string) error
 ```

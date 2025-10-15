@@ -14,7 +14,8 @@ import (
 )
 
 var (
-	signInLink = "https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=%s"
+	signInLink       = "https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=%s"
+	refreshTokenLink = "https://securetoken.googleapis.com/v1/token?key=%s"
 )
 
 // userManagementClient interface abstracts *auth.Client and *auth.TenantClient
@@ -363,6 +364,37 @@ func (c *GoogleIAM) SignIn(ctx context.Context, email, password string, tenantID
 
 	var response SignInResponse
 	url := fmt.Sprintf(signInLink, c.apiKey)
+	err = common.HttpPost(
+		ctx,
+		url,
+		map[string][]string{
+			"Content-Type": {string(common.HTTPContentTypeAppJSON)},
+		},
+		strings.NewReader(string(marshalledRequest)),
+		&response)
+
+	return &response, err
+}
+
+// RefreshToken exchanges a refresh token for a new ID token and refresh token.
+// The tenant context (if any) is already embedded in the refresh token from the original sign-in.
+func (c *GoogleIAM) RefreshToken(ctx context.Context, refreshToken string) (*RefreshTokenResponse, error) {
+	if common.IsEmpty(refreshToken) {
+		return nil, errors.New("refresh token is required")
+	}
+
+	request := RefreshTokenRequest{
+		GrantType:    "refresh_token",
+		RefreshToken: refreshToken,
+	}
+
+	marshalledRequest, err := json.Marshal(request)
+	if err != nil {
+		return nil, err
+	}
+
+	var response RefreshTokenResponse
+	url := fmt.Sprintf(refreshTokenLink, c.apiKey)
 	err = common.HttpPost(
 		ctx,
 		url,
