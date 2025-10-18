@@ -70,7 +70,7 @@ type RefreshTokenResponse struct {
 	TokenType    string `json:"token_type"`
 	RefreshToken string `json:"refresh_token"`
 	IDToken      string `json:"id_token"`
-	UserID       string `json:"user_id"`
+	UUID         string `json:"user_id"`
 	ProjectID    string `json:"project_id"`
 }
 
@@ -85,4 +85,15 @@ type TenantInfo struct {
 	DisplayName           string `json:"display_name"`
 	AllowPasswordSignUp   bool   `json:"allow_password_sign_up"`
 	EnableEmailLinkSignIn bool   `json:"enable_email_link_sign_in"`
+}
+
+type DecodedToken struct {
+	AuthTime int64                  `json:"auth_time"`
+	Issuer   string                 `json:"iss"`
+	Audience string                 `json:"aud"`
+	Expires  int64                  `json:"exp"`
+	IssuedAt int64                  `json:"iat"`
+	Subject  string                 `json:"sub,omitempty"`
+	UUID     string                 `json:"uuid,omitempty"`
+	Claims   map[string]interface{} `json:"-"`
 }
