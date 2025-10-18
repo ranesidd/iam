@@ -111,6 +111,7 @@ func main() {
 
     log.Printf("New ID Token: %s", refreshResponse.IDToken)
     log.Printf("New Refresh Token: %s", refreshResponse.RefreshToken)
+    log.Printf("User UUID: %s", refreshResponse.UUID)
     log.Printf("Token expires in: %s seconds", refreshResponse.ExpiresIn)
 }
 ```
@@ -361,7 +362,7 @@ DeleteAccount(ctx context.Context, accountUID string, tenantID ...string) error
 SignIn(ctx context.Context, email, password string, tenantID ...string) (*SignInResponse, error)
 SignOut(ctx context.Context, accountUUID string, tenantID ...string) error
 RefreshToken(ctx context.Context, refreshToken string) (*RefreshTokenResponse, error)
-VerifyToken(ctx context.Context, token string, tenantID ...string) error
+VerifyToken(ctx context.Context, token string, tenantID ...string) (*DecodedToken, error)
 Initiate(ctx context.Context, email string, tenantID ...string) error
 ```
 
@@ -430,9 +431,44 @@ const (
 
 ### Running Tests
 
+**Unit Tests**
+
 ```bash
 go test ./...
 ```
+
+**Integration Tests**
+
+Integration tests require Firebase credentials and use the `integration` build tag.
+
+**Required Environment Variables:**
+```bash
+export GOOGLE_PROJECT_ID="your-firebase-project-id"
+export GOOGLE_API_KEY="your-firebase-api-key"
+```
+
+**Required Authentication (Application Default Credentials):**
+```bash
+gcloud auth application-default login --impersonate-service-account=<service-account>@PROJECT-ID.iam.gserviceaccount.com
+```
+
+**Required IAM Roles:**
+- Service account: **"Identity Toolkit Admin"** (`roles/identitytoolkit.admin`)
+- Your login account: **"Service Account Token Creator"** (`roles/iam.serviceAccountTokenCreator`)
+
+**Run Integration Tests:**
+```bash
+# Run all integration tests
+go test -tags=integration ./google_iam -v
+
+# Run a specific integration test
+go test -tags=integration ./google_iam -v -run TestAccountLifecycle
+
+# Run all tests (unit + integration)
+go test -tags=integration ./...
+```
+
+**Note**: Integration tests will be skipped if environment variables are not set. Multi-tenancy tests require Firebase Authentication with Identity Platform (paid tier).
 
 ### Building
 

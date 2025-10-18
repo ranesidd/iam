@@ -276,13 +276,22 @@ func TestTokenVerification(t *testing.T) {
 	require.NoError(t, err)
 
 	t.Run("verify valid token", func(t *testing.T) {
-		err := client.VerifyToken(ctx, signInResp.IDToken)
+		decodedToken, err := client.VerifyToken(ctx, signInResp.IDToken)
 		assert.NoError(t, err)
+		assert.NotNil(t, decodedToken)
+		assert.Equal(t, createResp.Account.UUID, decodedToken.UUID)
+		assert.NotEmpty(t, decodedToken.Subject)
+		assert.NotEmpty(t, decodedToken.Issuer)
+		assert.NotEmpty(t, decodedToken.Audience)
+		assert.Greater(t, decodedToken.Expires, int64(0))
+		assert.Greater(t, decodedToken.IssuedAt, int64(0))
+		assert.Greater(t, decodedToken.AuthTime, int64(0))
 	})
 
 	t.Run("verify invalid token", func(t *testing.T) {
-		err := client.VerifyToken(ctx, "invalid-token")
+		decodedToken, err := client.VerifyToken(ctx, "invalid-token")
 		assert.Error(t, err)
+		assert.Nil(t, decodedToken)
 	})
 }
 
@@ -322,15 +331,17 @@ func TestRefreshToken(t *testing.T) {
 		assert.NotEmpty(t, refreshResp.RefreshToken, "Refresh token should not be empty")
 		assert.NotEmpty(t, refreshResp.ExpiresIn, "ExpiresIn should not be empty")
 		assert.NotEmpty(t, refreshResp.TokenType, "TokenType should not be empty")
-		assert.NotEmpty(t, refreshResp.UserID, "UserID should not be empty")
+		assert.NotEmpty(t, refreshResp.UUID, "UUID should not be empty")
 		assert.NotEmpty(t, refreshResp.ProjectID, "ProjectID should not be empty")
 
-		// Verify UserID matches the created account
-		assert.Equal(t, createResp.Account.UUID, refreshResp.UserID, "UserID should match the account")
+		// Verify UUID matches the created account
+		assert.Equal(t, createResp.Account.UUID, refreshResp.UUID, "UUID should match the account")
 
 		// Verify the refreshed ID token is valid
-		err = client.VerifyToken(ctx, refreshResp.IDToken)
+		decodedToken, err := client.VerifyToken(ctx, refreshResp.IDToken)
 		assert.NoError(t, err, "Refreshed ID token should be valid")
+		assert.NotNil(t, decodedToken)
+		assert.Equal(t, createResp.Account.UUID, decodedToken.UUID)
 
 		// Verify the new refresh token works
 		secondRefreshResp, err := client.RefreshToken(ctx, refreshResp.RefreshToken)
@@ -374,8 +385,9 @@ func TestSignOut(t *testing.T) {
 	require.NoError(t, err)
 
 	// Verify token works before sign out
-	err = client.VerifyToken(ctx, signInResp.IDToken)
+	decodedToken, err := client.VerifyToken(ctx, signInResp.IDToken)
 	require.NoError(t, err)
+	require.NotNil(t, decodedToken)
 
 	// Sign out to revoke refresh tokens
 	err = client.SignOut(ctx, createResp.Account.UUID)
@@ -709,8 +721,11 @@ func TestTenantAwareOperations(t *testing.T) {
 		signInResp, err := client.SignIn(ctx, email, password, tenant.ID)
 		require.NoError(t, err)
 
-		err = client.VerifyToken(ctx, signInResp.IDToken, tenant.ID)
+		decodedToken, err := client.VerifyToken(ctx, signInResp.IDToken, tenant.ID)
 		assert.NoError(t, err)
+		assert.NotNil(t, decodedToken)
+		assert.Equal(t, accountUID, decodedToken.UUID)
+		assert.NotEmpty(t, decodedToken.Subject)
 	})
 
 	t.Run("reset password link with tenant ID", func(t *testing.T) {
@@ -796,8 +811,9 @@ func TestSignOutWithTenant(t *testing.T) {
 	require.NoError(t, err)
 
 	// Verify token works before sign out
-	err = client.VerifyToken(ctx, signInResp.IDToken, tenant.ID)
+	decodedToken, err := client.VerifyToken(ctx, signInResp.IDToken, tenant.ID)
 	require.NoError(t, err)
+	require.NotNil(t, decodedToken)
 
 	// Sign out to revoke refresh tokens
 	err = client.SignOut(ctx, createResp.Account.UUID, tenant.ID)
@@ -842,14 +858,16 @@ func TestRefreshTokenWithTenant(t *testing.T) {
 		// Verify response contains all expected fields
 		assert.NotEmpty(t, refreshResp.IDToken)
 		assert.NotEmpty(t, refreshResp.RefreshToken)
-		assert.NotEmpty(t, refreshResp.UserID)
+		assert.NotEmpty(t, refreshResp.UUID)
 
 		// Verify the new ID token works with the tenant
-		err = client.VerifyToken(ctx, refreshResp.IDToken, tenant.ID)
+		decodedToken, err := client.VerifyToken(ctx, refreshResp.IDToken, tenant.ID)
 		assert.NoError(t, err, "Refreshed token should work with original tenant")
+		assert.NotNil(t, decodedToken)
+		assert.Equal(t, createResp.Account.UUID, decodedToken.UUID)
 
-		// Verify the refreshed token has tenant context (same user ID)
-		assert.Equal(t, createResp.Account.UUID, refreshResp.UserID, "UserID should match the tenant-scoped account")
+		// Verify the refreshed token has tenant context (same user UUID)
+		assert.Equal(t, createResp.Account.UUID, refreshResp.UUID, "UUID should match the tenant-scoped account")
 	})
 
 	t.Run("multiple refresh cycles maintain tenant context", func(t *testing.T) {
@@ -861,8 +879,10 @@ func TestRefreshTokenWithTenant(t *testing.T) {
 			require.NoError(t, err, "Refresh cycle %d should succeed", i+1)
 
 			// Verify token works with tenant
-			err = client.VerifyToken(ctx, refreshResp.IDToken, tenant.ID)
+			decodedToken, err := client.VerifyToken(ctx, refreshResp.IDToken, tenant.ID)
 			assert.NoError(t, err, "Token from refresh cycle %d should work with tenant", i+1)
+			assert.NotNil(t, decodedToken)
+			assert.Equal(t, createResp.Account.UUID, decodedToken.UUID)
 
 			// Use new refresh token for next iteration
 			currentRefreshToken = refreshResp.RefreshToken

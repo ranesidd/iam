@@ -316,7 +316,7 @@ func (c *GoogleIAM) Initiate(ctx context.Context, email string, tenantID ...stri
 	return nil
 }
 
-func (c *GoogleIAM) VerifyToken(ctx context.Context, token string, tenantID ...string) error {
+func (c *GoogleIAM) VerifyToken(ctx context.Context, token string, tenantID ...string) (*DecodedToken, error) {
 	var tid *string
 	if len(tenantID) > 0 {
 		tid = &tenantID[0]
@@ -324,11 +324,24 @@ func (c *GoogleIAM) VerifyToken(ctx context.Context, token string, tenantID ...s
 
 	client, err := c.getAuthClient(ctx, tid)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	_, err = client.VerifyIDTokenAndCheckRevoked(ctx, token)
-	return err
+	authToken, err := client.VerifyIDTokenAndCheckRevoked(ctx, token)
+	if err != nil {
+		return nil, err
+	}
+
+	return &DecodedToken{
+		AuthTime: authToken.AuthTime,
+		Issuer:   authToken.Issuer,
+		Audience: authToken.Audience,
+		Expires:  authToken.Expires,
+		IssuedAt: authToken.IssuedAt,
+		Subject:  authToken.Subject,
+		UUID:     authToken.UID,
+		Claims:   authToken.Claims,
+	}, err
 }
 
 func (c *GoogleIAM) SignOut(ctx context.Context, accountUUID string, tenantID ...string) error {
