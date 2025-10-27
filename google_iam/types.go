@@ -1,14 +1,14 @@
 package googleiam
 
 type Account struct {
-	UUID         string                 `json:"uuid,omitempty"`
-	DisplayName  string                 `json:"display_name,omitempty"`
-	Email        string                 `json:"email,omitempty"`
-	Phone        *string                `json:"phone,omitempty"`
-	PhotoURL     *string                `json:"photo_url,omitempty"`
-	EmailVerified *bool                 `json:"email_verified,omitempty"`
-	Disabled     *bool                  `json:"disabled,omitempty"`
-	CustomClaims map[string]interface{} `json:"custom_claims,omitempty"`
+	UUID          string                 `json:"uuid,omitempty"`
+	DisplayName   string                 `json:"display_name,omitempty"`
+	Email         string                 `json:"email,omitempty"`
+	Phone         *string                `json:"phone,omitempty"`
+	PhotoURL      *string                `json:"photo_url,omitempty"`
+	EmailVerified *bool                  `json:"email_verified,omitempty"`
+	Disabled      *bool                  `json:"disabled,omitempty"`
+	CustomClaims  map[string]interface{} `json:"custom_claims,omitempty"`
 }
 
 type CreateAccountRequest struct {

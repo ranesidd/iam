@@ -1049,9 +1049,9 @@ func TestUpdateCustomUserClaims(t *testing.T) {
 
 	// Update claims
 	updatedClaims := map[string]interface{}{
-		"role":        "admin",
-		"level":       10,
-		"department":  "engineering",
+		"role":       "admin",
+		"level":      10,
+		"department": "engineering",
 	}
 	err = client.SetCustomUserClaims(ctx, accountUID, updatedClaims)
 	assert.NoError(t, err)
