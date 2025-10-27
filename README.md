@@ -366,6 +366,45 @@ VerifyToken(ctx context.Context, token string, tenantID ...string) (*DecodedToke
 Initiate(ctx context.Context, email string, tenantID ...string) error
 ```
 
+**Token Verification Response Types:**
+
+The `VerifyToken` method returns a `DecodedToken` containing the verified token's claims and Firebase-specific metadata:
+
+```go
+type DecodedToken struct {
+    AuthTime int64                  `json:"auth_time"`  // Unix timestamp when user authenticated
+    Issuer   string                 `json:"iss"`        // Token issuer (Firebase project URL)
+    Audience string                 `json:"aud"`        // Token audience (Firebase project ID)
+    Expires  int64                  `json:"exp"`        // Unix timestamp when token expires
+    IssuedAt int64                  `json:"iat"`        // Unix timestamp when token was issued
+    Subject  string                 `json:"sub"`        // User ID (same as UUID)
+    UUID     string                 `json:"uuid"`       // User's unique identifier
+    Claims   map[string]interface{} `json:"-"`          // Additional custom claims
+    Firebase FirebaseInfo           `json:"firebase"`   // Firebase-specific information
+}
+
+type FirebaseInfo struct {
+    SignInProvider string                 `json:"sign_in_provider"` // Authentication method (e.g., "password", "google.com")
+    Tenant         string                 `json:"tenant"`           // Tenant ID (empty for non-tenant accounts)
+    Identities     map[string]interface{} `json:"identities"`       // User identity information (email, phone, etc.)
+}
+```
+
+Example usage:
+
+```go
+// Verify and decode an ID token
+decodedToken, err := iam.VerifyToken(ctx, idToken)
+if err != nil {
+    log.Fatal(err)
+}
+
+log.Printf("User ID: %s", decodedToken.UUID)
+log.Printf("Sign-in method: %s", decodedToken.Firebase.SignInProvider)
+log.Printf("Tenant ID: %s", decodedToken.Firebase.Tenant) // Empty for non-tenant accounts
+log.Printf("Identities: %+v", decodedToken.Firebase.Identities)
+```
+
 **Password Operations**
 ```go
 UpdateAccountPassword(ctx context.Context, accountUID string, request UpdatePasswordRequest) (*SignInResponse, error)

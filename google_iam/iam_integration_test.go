@@ -286,6 +286,12 @@ func TestTokenVerification(t *testing.T) {
 		assert.Greater(t, decodedToken.Expires, int64(0))
 		assert.Greater(t, decodedToken.IssuedAt, int64(0))
 		assert.Greater(t, decodedToken.AuthTime, int64(0))
+
+		// Verify Firebase info is populated
+		assert.NotEmpty(t, decodedToken.Firebase.SignInProvider, "SignInProvider should be populated")
+		assert.NotNil(t, decodedToken.Firebase.Identities, "Identities should be populated")
+		// Tenant should be empty for non-tenant accounts
+		assert.Empty(t, decodedToken.Firebase.Tenant, "Tenant should be empty for non-tenant accounts")
 	})
 
 	t.Run("verify invalid token", func(t *testing.T) {
@@ -726,6 +732,11 @@ func TestTenantAwareOperations(t *testing.T) {
 		assert.NotNil(t, decodedToken)
 		assert.Equal(t, accountUID, decodedToken.UUID)
 		assert.NotEmpty(t, decodedToken.Subject)
+
+		// Verify Firebase info is populated for tenant
+		assert.NotEmpty(t, decodedToken.Firebase.SignInProvider, "SignInProvider should be populated")
+		assert.NotNil(t, decodedToken.Firebase.Identities, "Identities should be populated")
+		assert.Equal(t, tenant.ID, decodedToken.Firebase.Tenant, "Tenant should match the tenant ID used for sign in")
 	})
 
 	t.Run("reset password link with tenant ID", func(t *testing.T) {
@@ -868,6 +879,10 @@ func TestRefreshTokenWithTenant(t *testing.T) {
 
 		// Verify the refreshed token has tenant context (same user UUID)
 		assert.Equal(t, createResp.Account.UUID, refreshResp.UUID, "UUID should match the tenant-scoped account")
+
+		// Verify Firebase info includes tenant context
+		assert.Equal(t, tenant.ID, decodedToken.Firebase.Tenant, "Tenant should be preserved after refresh")
+		assert.NotEmpty(t, decodedToken.Firebase.SignInProvider, "SignInProvider should be populated")
 	})
 
 	t.Run("multiple refresh cycles maintain tenant context", func(t *testing.T) {
@@ -883,6 +898,9 @@ func TestRefreshTokenWithTenant(t *testing.T) {
 			assert.NoError(t, err, "Token from refresh cycle %d should work with tenant", i+1)
 			assert.NotNil(t, decodedToken)
 			assert.Equal(t, createResp.Account.UUID, decodedToken.UUID)
+
+			// Verify tenant context is maintained through refresh cycles
+			assert.Equal(t, tenant.ID, decodedToken.Firebase.Tenant, "Tenant should be maintained through refresh cycle %d", i+1)
 
 			// Use new refresh token for next iteration
 			currentRefreshToken = refreshResp.RefreshToken

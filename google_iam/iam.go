@@ -332,6 +332,27 @@ func (c *GoogleIAM) VerifyToken(ctx context.Context, token string, tenantID ...s
 		return nil, err
 	}
 
+	// Extract Firebase-specific information from claims
+	firebaseInfo := FirebaseInfo{}
+	if firebaseClaim, ok := authToken.Claims["firebase"]; ok {
+		if firebaseMap, ok := firebaseClaim.(map[string]interface{}); ok {
+			// Extract sign_in_provider
+			if signInProvider, ok := firebaseMap["sign_in_provider"].(string); ok {
+				firebaseInfo.SignInProvider = signInProvider
+			}
+
+			// Extract tenant
+			if tenant, ok := firebaseMap["tenant"].(string); ok {
+				firebaseInfo.Tenant = tenant
+			}
+
+			// Extract identities
+			if identities, ok := firebaseMap["identities"].(map[string]interface{}); ok {
+				firebaseInfo.Identities = identities
+			}
+		}
+	}
+
 	return &DecodedToken{
 		AuthTime: authToken.AuthTime,
 		Issuer:   authToken.Issuer,
@@ -341,6 +362,7 @@ func (c *GoogleIAM) VerifyToken(ctx context.Context, token string, tenantID ...s
 		Subject:  authToken.Subject,
 		UUID:     authToken.UID,
 		Claims:   authToken.Claims,
+		Firebase: firebaseInfo,
 	}, err
 }
 
