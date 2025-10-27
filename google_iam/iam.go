@@ -29,6 +29,7 @@ type userManagementClient interface {
 	RevokeRefreshTokens(ctx context.Context, uid string) error
 	VerifyIDTokenAndCheckRevoked(ctx context.Context, idToken string) (*auth.Token, error)
 	PasswordResetLink(ctx context.Context, email string) (string, error)
+	SetCustomUserClaims(ctx context.Context, uid string, claims map[string]interface{}) error
 }
 
 // getAuthClient returns either a tenant-aware client or the default auth client
@@ -104,6 +105,7 @@ func (c *GoogleIAM) CreateAccount(ctx context.Context, account CreateAccountRequ
 			DisplayName:   user.DisplayName,
 			EmailVerified: &user.EmailVerified,
 			Disabled:      &user.Disabled,
+			CustomClaims:  user.CustomClaims,
 		},
 	}
 
@@ -153,6 +155,7 @@ func (c *GoogleIAM) GetAccount(ctx context.Context, accountUID string, tenantID 
 		DisplayName:   user.DisplayName,
 		EmailVerified: &user.EmailVerified,
 		Disabled:      &user.Disabled,
+		CustomClaims:  user.CustomClaims,
 	}
 
 	if !common.IsEmpty(user.PhoneNumber) {
@@ -192,6 +195,7 @@ func (c *GoogleIAM) UpdateAccount(ctx context.Context, accountUID string, accoun
 			DisplayName:   user.DisplayName,
 			EmailVerified: &user.EmailVerified,
 			Disabled:      &user.Disabled,
+			CustomClaims:  user.CustomClaims,
 		},
 	}
 
@@ -218,6 +222,31 @@ func (c *GoogleIAM) DeleteAccount(ctx context.Context, accountUID string, tenant
 	}
 
 	return client.DeleteUser(ctx, accountUID)
+}
+
+func (c *GoogleIAM) SetCustomUserClaims(ctx context.Context, accountUID string, claims map[string]interface{}, tenantID ...string) error {
+	var tid *string
+	if len(tenantID) > 0 {
+		tid = &tenantID[0]
+	}
+
+	// Validate claims size (Firebase limit is 1000 bytes)
+	if len(claims) > 0 {
+		claimsJSON, err := json.Marshal(claims)
+		if err != nil {
+			return fmt.Errorf("invalid claims format: %w", err)
+		}
+		if len(claimsJSON) > 1000 {
+			return fmt.Errorf("custom claims exceed 1000 byte limit (size: %d bytes)", len(claimsJSON))
+		}
+	}
+
+	client, err := c.getAuthClient(ctx, tid)
+	if err != nil {
+		return err
+	}
+
+	return client.SetCustomUserClaims(ctx, accountUID, claims)
 }
 
 func (c *GoogleIAM) UpdateAccountPassword(
