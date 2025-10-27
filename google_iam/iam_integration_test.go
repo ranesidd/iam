@@ -965,3 +965,269 @@ func TestInitiateWithTenant(t *testing.T) {
 		assert.NoError(t, err)
 	})
 }
+
+// Custom Claims Integration Tests
+
+func TestSetCustomUserClaims(t *testing.T) {
+	client := setupIntegrationTest(t)
+	ctx := context.Background()
+
+	email := generateTestEmail()
+	password := "testPassword123!"
+
+	// Create test account
+	createReq := googleiam.CreateAccountRequest{
+		Email:       email,
+		Password:    password,
+		DisplayName: generateTestDisplayName(),
+	}
+
+	createResp, err := client.CreateAccount(ctx, createReq)
+	require.NoError(t, err)
+	accountUID := createResp.Account.UUID
+	t.Cleanup(func() {
+		cleanupTestUser(t, client, accountUID)
+	})
+
+	t.Run("set custom claims on user", func(t *testing.T) {
+		claims := map[string]interface{}{
+			"role":        "admin",
+			"permissions": []string{"read", "write", "delete"},
+			"level":       5,
+		}
+
+		err := client.SetCustomUserClaims(ctx, accountUID, claims)
+		assert.NoError(t, err)
+
+		// Verify claims appear in GetAccount
+		account, err := client.GetAccount(ctx, accountUID)
+		require.NoError(t, err)
+		assert.NotNil(t, account.CustomClaims)
+		assert.Equal(t, "admin", account.CustomClaims["role"])
+		assert.Equal(t, float64(5), account.CustomClaims["level"]) // JSON numbers are float64
+
+		// Sign in to get a new token with claims
+		signInResp, err := client.SignIn(ctx, email, password)
+		require.NoError(t, err)
+
+		// Verify claims appear in the token
+		decodedToken, err := client.VerifyToken(ctx, signInResp.IDToken)
+		require.NoError(t, err)
+		assert.NotNil(t, decodedToken.Claims)
+		assert.Equal(t, "admin", decodedToken.Claims["role"])
+		assert.Equal(t, float64(5), decodedToken.Claims["level"])
+	})
+}
+
+func TestUpdateCustomUserClaims(t *testing.T) {
+	client := setupIntegrationTest(t)
+	ctx := context.Background()
+
+	email := generateTestEmail()
+	password := "testPassword123!"
+
+	createReq := googleiam.CreateAccountRequest{
+		Email:       email,
+		Password:    password,
+		DisplayName: generateTestDisplayName(),
+	}
+
+	createResp, err := client.CreateAccount(ctx, createReq)
+	require.NoError(t, err)
+	accountUID := createResp.Account.UUID
+	t.Cleanup(func() {
+		cleanupTestUser(t, client, accountUID)
+	})
+
+	// Set initial claims
+	initialClaims := map[string]interface{}{
+		"role":  "user",
+		"level": 1,
+	}
+	err = client.SetCustomUserClaims(ctx, accountUID, initialClaims)
+	require.NoError(t, err)
+
+	// Update claims
+	updatedClaims := map[string]interface{}{
+		"role":        "admin",
+		"level":       10,
+		"department":  "engineering",
+	}
+	err = client.SetCustomUserClaims(ctx, accountUID, updatedClaims)
+	assert.NoError(t, err)
+
+	// Verify updated claims
+	account, err := client.GetAccount(ctx, accountUID)
+	require.NoError(t, err)
+	assert.Equal(t, "admin", account.CustomClaims["role"])
+	assert.Equal(t, float64(10), account.CustomClaims["level"])
+	assert.Equal(t, "engineering", account.CustomClaims["department"])
+}
+
+func TestRemoveCustomUserClaims(t *testing.T) {
+	client := setupIntegrationTest(t)
+	ctx := context.Background()
+
+	email := generateTestEmail()
+	password := "testPassword123!"
+
+	createReq := googleiam.CreateAccountRequest{
+		Email:       email,
+		Password:    password,
+		DisplayName: generateTestDisplayName(),
+	}
+
+	createResp, err := client.CreateAccount(ctx, createReq)
+	require.NoError(t, err)
+	accountUID := createResp.Account.UUID
+	t.Cleanup(func() {
+		cleanupTestUser(t, client, accountUID)
+	})
+
+	// Set claims
+	claims := map[string]interface{}{
+		"role": "admin",
+	}
+	err = client.SetCustomUserClaims(ctx, accountUID, claims)
+	require.NoError(t, err)
+
+	// Remove all claims by passing nil
+	err = client.SetCustomUserClaims(ctx, accountUID, nil)
+	assert.NoError(t, err)
+
+	// Verify claims are removed
+	account, err := client.GetAccount(ctx, accountUID)
+	require.NoError(t, err)
+	assert.Empty(t, account.CustomClaims)
+}
+
+func TestCustomClaimsInGetAccount(t *testing.T) {
+	client := setupIntegrationTest(t)
+	ctx := context.Background()
+
+	email := generateTestEmail()
+	createReq := googleiam.CreateAccountRequest{
+		Email:       email,
+		Password:    "testPassword123!",
+		DisplayName: generateTestDisplayName(),
+	}
+
+	createResp, err := client.CreateAccount(ctx, createReq)
+	require.NoError(t, err)
+	accountUID := createResp.Account.UUID
+	t.Cleanup(func() {
+		cleanupTestUser(t, client, accountUID)
+	})
+
+	// New account should have no custom claims
+	account, err := client.GetAccount(ctx, accountUID)
+	require.NoError(t, err)
+	assert.Empty(t, account.CustomClaims)
+
+	// Set claims
+	claims := map[string]interface{}{
+		"subscription": "premium",
+		"credits":      100,
+	}
+	err = client.SetCustomUserClaims(ctx, accountUID, claims)
+	require.NoError(t, err)
+
+	// GetAccount should return the claims
+	account, err = client.GetAccount(ctx, accountUID)
+	require.NoError(t, err)
+	assert.NotEmpty(t, account.CustomClaims)
+	assert.Equal(t, "premium", account.CustomClaims["subscription"])
+	assert.Equal(t, float64(100), account.CustomClaims["credits"])
+}
+
+func TestCustomClaimsWithTenant(t *testing.T) {
+	client := setupIntegrationTest(t)
+	ctx := context.Background()
+
+	tenant := createTestTenant(t, client)
+
+	email := generateTestEmail()
+	password := "testPassword123!"
+
+	// Create account in tenant
+	createReq := googleiam.CreateAccountRequest{
+		Email:       email,
+		Password:    password,
+		DisplayName: generateTestDisplayName(),
+		TenantID:    &tenant.ID,
+	}
+
+	createResp, err := client.CreateAccount(ctx, createReq)
+	require.NoError(t, err)
+	accountUID := createResp.Account.UUID
+	t.Cleanup(func() {
+		cleanupTestUser(t, client, accountUID, tenant.ID)
+	})
+
+	t.Run("set and verify claims in tenant", func(t *testing.T) {
+		claims := map[string]interface{}{
+			"tenant_role": "tenant_admin",
+			"org_id":      "org-123",
+		}
+
+		// Set claims with tenant ID
+		err := client.SetCustomUserClaims(ctx, accountUID, claims, tenant.ID)
+		assert.NoError(t, err)
+
+		// Get account with tenant ID
+		account, err := client.GetAccount(ctx, accountUID, tenant.ID)
+		require.NoError(t, err)
+		assert.Equal(t, "tenant_admin", account.CustomClaims["tenant_role"])
+		assert.Equal(t, "org-123", account.CustomClaims["org_id"])
+
+		// Sign in to tenant and verify claims in token
+		signInResp, err := client.SignIn(ctx, email, password, tenant.ID)
+		require.NoError(t, err)
+
+		decodedToken, err := client.VerifyToken(ctx, signInResp.IDToken, tenant.ID)
+		require.NoError(t, err)
+		assert.Equal(t, "tenant_admin", decodedToken.Claims["tenant_role"])
+		assert.Equal(t, tenant.ID, decodedToken.Firebase.Tenant)
+	})
+}
+
+func TestCustomClaimsSizeValidation(t *testing.T) {
+	client := setupIntegrationTest(t)
+	ctx := context.Background()
+
+	email := generateTestEmail()
+	createReq := googleiam.CreateAccountRequest{
+		Email:       email,
+		Password:    "testPassword123!",
+		DisplayName: generateTestDisplayName(),
+	}
+
+	createResp, err := client.CreateAccount(ctx, createReq)
+	require.NoError(t, err)
+	accountUID := createResp.Account.UUID
+	t.Cleanup(func() {
+		cleanupTestUser(t, client, accountUID)
+	})
+
+	t.Run("claims exceeding 1000 bytes should fail", func(t *testing.T) {
+		// Create claims that exceed 1000 bytes
+		largeClaims := map[string]interface{}{
+			"large_field": string(make([]byte, 1000)),
+		}
+
+		err := client.SetCustomUserClaims(ctx, accountUID, largeClaims)
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "1000 byte limit")
+	})
+
+	t.Run("claims within limit should succeed", func(t *testing.T) {
+		// Create claims well under 1000 bytes
+		validClaims := map[string]interface{}{
+			"role":   "admin",
+			"status": "active",
+		}
+
+		err := client.SetCustomUserClaims(ctx, accountUID, validClaims)
+		assert.NoError(t, err)
+	})
+}

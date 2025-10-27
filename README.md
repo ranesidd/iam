@@ -171,6 +171,78 @@ func main() {
 
 **Backward Compatible**: All tenant parameters are optional. Omitting them uses the default project-level authentication.
 
+### Custom Claims Management
+
+Manage custom claims for advanced authorization scenarios. Custom claims are automatically included in user tokens and persist until explicitly changed:
+
+```go
+package main
+
+import (
+    "context"
+    "log"
+
+    "github.com/ranesidd/iam/google_iam"
+)
+
+func main() {
+    iam, err := googleiam.New()
+    if err != nil {
+        log.Fatal(err)
+    }
+
+    ctx := context.Background()
+    userUID := "user-uid-123"
+
+    // Set custom claims (limit: 1000 bytes)
+    claims := map[string]interface{}{
+        "role":        "admin",
+        "permissions": []string{"read", "write", "delete"},
+        "level":       5,
+        "department":  "engineering",
+    }
+    err = iam.SetCustomUserClaims(ctx, userUID, claims)
+    if err != nil {
+        log.Fatal(err)
+    }
+    log.Println("Custom claims set successfully")
+
+    // Get account to see current claims
+    account, err := iam.GetAccount(ctx, userUID)
+    if err != nil {
+        log.Fatal(err)
+    }
+    log.Printf("Current claims: %+v", account.CustomClaims)
+
+    // Update claims (replaces existing claims)
+    updatedClaims := map[string]interface{}{
+        "role":  "super_admin",
+        "level": 10,
+    }
+    err = iam.SetCustomUserClaims(ctx, userUID, updatedClaims)
+    if err != nil {
+        log.Fatal(err)
+    }
+
+    // Remove all claims
+    err = iam.SetCustomUserClaims(ctx, userUID, nil)
+    if err != nil {
+        log.Fatal(err)
+    }
+    log.Println("All custom claims removed")
+
+    // Claims are automatically included in new tokens
+    // User must sign in again or refresh token to get updated claims
+}
+```
+
+**Important Notes:**
+- Custom claims are limited to 1000 bytes
+- Claims persist until explicitly changed or removed
+- New claims appear in tokens after user signs in again or refreshes their token
+- Claims work with multi-tenancy (pass optional `tenantID` parameter)
+- Use for complex authorization: roles, permissions, subscription tiers, etc.
+
 ### Tenant Management
 
 Create and manage Identity Platform tenants programmatically:
@@ -355,6 +427,7 @@ CreateAccount(ctx context.Context, account CreateAccountRequest) (*CreateAccount
 GetAccount(ctx context.Context, accountUID string, tenantID ...string) (*Account, error)
 UpdateAccount(ctx context.Context, accountUID string, account UpdateAccountRequest, tenantID ...string) (*UpdateAccountResponse, error)
 DeleteAccount(ctx context.Context, accountUID string, tenantID ...string) error
+SetCustomUserClaims(ctx context.Context, accountUID string, claims map[string]interface{}, tenantID ...string) error
 ```
 
 **Authentication**
@@ -417,10 +490,28 @@ CreateTenant(ctx context.Context, request CreateTenantRequest) (*TenantInfo, err
 DeleteTenant(ctx context.Context, tenantID string) error
 ```
 
+**Response Types:**
+
+The `Account` type includes custom claims information:
+```go
+type Account struct {
+    UUID         string                 `json:"uuid,omitempty"`
+    DisplayName  string                 `json:"display_name,omitempty"`
+    Email        string                 `json:"email,omitempty"`
+    Phone        *string                `json:"phone,omitempty"`
+    PhotoURL     *string                `json:"photo_url,omitempty"`
+    EmailVerified *bool                 `json:"email_verified,omitempty"`
+    Disabled     *bool                  `json:"disabled,omitempty"`
+    CustomClaims map[string]interface{} `json:"custom_claims,omitempty"` // Custom authorization claims
+}
+```
+
 **Notes:**
 - All `tenantID` parameters are optional (variadic) - omit for default project-level authentication
 - `CreateAccountRequest`, `UpdatePasswordRequest`, and `SignInRequest` include optional `TenantID *string` field
 - Multi-tenancy requires Firebase Authentication with Identity Platform (paid tier)
+- Custom claims are limited to 1000 bytes and automatically included in user tokens
+- Set claims to `nil` or empty map to remove all custom claims
 
 ### OTP Package (`github.com/ranesidd/iam/otp`)
 
