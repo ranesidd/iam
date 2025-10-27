@@ -96,4 +96,11 @@ type DecodedToken struct {
 	Subject  string                 `json:"sub,omitempty"`
 	UUID     string                 `json:"uuid,omitempty"`
 	Claims   map[string]interface{} `json:"-"`
+	Firebase FirebaseInfo           `json:"firebase"`
+}
+
+type FirebaseInfo struct {
+	SignInProvider string                 `json:"sign_in_provider"`
+	Tenant         string                 `json:"tenant"`
+	Identities     map[string]interface{} `json:"identities"`
 }
