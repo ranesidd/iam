@@ -8,15 +8,22 @@ import (
 	"strings"
 	"time"
 
+	sq "github.com/Masterminds/squirrel"
 	"github.com/google/uuid"
 )
 
 type OTP struct {
-	db *sql.DB
+	db                *sql.DB
+	placeholderFormat sq.PlaceholderFormat
 }
 
-func New(db *sql.DB) *OTP {
-	return &OTP{db: db}
+func New(db *sql.DB, driverName ...string) *OTP {
+	inferredDriverName := extractDriverName(driverName...)
+	placeholderFormat := placeholderFormatForDriver(inferredDriverName)
+	return &OTP{
+		db:                db,
+		placeholderFormat: placeholderFormat,
+	}
 }
 
 func (c *OTP) Generate(ctx context.Context, email string, expirationHours int) (*OTPPayload, error) {
@@ -61,12 +68,19 @@ func (c *OTP) Validate(ctx context.Context, email, code string) error {
 }
 
 func (c *OTP) getVerificationCode(ctx context.Context, email string) (OTPPayload, error) {
-	query := "SELECT email, code, expires_at FROM verification_codes where email = ?"
+	query, args, err := sq.Select("email", "code", "expires_at").
+		From("verification_codes").
+		Where(sq.Eq{"email": email}).
+		PlaceholderFormat(c.placeholderFormat).
+		ToSql()
+	if err != nil {
+		return OTPPayload{}, fmt.Errorf("failed to build select query: %w", err)
+	}
 
-	row := c.db.QueryRowContext(ctx, query, email)
+	row := c.db.QueryRowContext(ctx, query, args...)
 
 	var codes OTPPayload
-	err := row.Scan(&codes.Email, &codes.Code, &codes.ExpiresAt)
+	err = row.Scan(&codes.Email, &codes.Code, &codes.ExpiresAt)
 	if err != nil {
 		return OTPPayload{}, fmt.Errorf("error reading row: %v", err)
 	}
@@ -75,15 +89,30 @@ func (c *OTP) getVerificationCode(ctx context.Context, email string) (OTPPayload
 
 func (o *OTP) insertVerificationCode(ctx context.Context, otp OTPPayload) error {
 	// Delete existing code if any
-	_, err := o.db.ExecContext(ctx, "DELETE FROM verification_codes WHERE email = ?", otp.Email)
+	deleteQuery, deleteArgs, err := sq.Delete("verification_codes").
+		Where(sq.Eq{"email": otp.Email}).
+		PlaceholderFormat(o.placeholderFormat).
+		ToSql()
+	if err != nil {
+		return fmt.Errorf("failed to build delete query: %w", err)
+	}
+
+	_, err = o.db.ExecContext(ctx, deleteQuery, deleteArgs...)
 	if err != nil {
 		return fmt.Errorf("failed to delete existing code: %w", err)
 	}
 
 	// Insert new code
-	_, err = o.db.ExecContext(ctx,
-		"INSERT INTO verification_codes (email, code, expires_at) VALUES (?, ?, ?)",
-		otp.Email, otp.Code, otp.ExpiresAt)
+	insertQuery, insertArgs, err := sq.Insert("verification_codes").
+		Columns("email", "code", "expires_at").
+		Values(otp.Email, otp.Code, otp.ExpiresAt).
+		PlaceholderFormat(o.placeholderFormat).
+		ToSql()
+	if err != nil {
+		return fmt.Errorf("failed to build insert query: %w", err)
+	}
+
+	_, err = o.db.ExecContext(ctx, insertQuery, insertArgs...)
 	if err != nil {
 		return fmt.Errorf("failed to insert verification code: %w", err)
 	}
@@ -92,11 +121,34 @@ func (o *OTP) insertVerificationCode(ctx context.Context, otp OTPPayload) error 
 }
 
 func (c *OTP) deleteVerificationCode(ctx context.Context, email string) error {
-	query := "DELETE FROM verification_codes WHERE email = ?"
+	query, args, err := sq.Delete("verification_codes").
+		Where(sq.Eq{"email": email}).
+		PlaceholderFormat(c.placeholderFormat).
+		ToSql()
+	if err != nil {
+		return fmt.Errorf("failed to build delete query: %w", err)
+	}
 
-	_, err := c.db.ExecContext(ctx, query, email)
+	_, err = c.db.ExecContext(ctx, query, args...)
 	if err != nil {
 		return fmt.Errorf("error deleting verification code: %v", err)
 	}
 	return nil
+}
+
+func extractDriverName(driverName ...string) string {
+	var inferredDriverName string
+	if len(driverName) > 0 {
+		inferredDriverName = strings.ToLower(driverName[0])
+	}
+	return inferredDriverName
+}
+
+func placeholderFormatForDriver(driverName string) sq.PlaceholderFormat {
+	switch driverName {
+	case "postgres", "pgx", "pgx/v4", "pgx/v5":
+		return sq.Dollar
+	default:
+		return sq.Question
+	}
 }
