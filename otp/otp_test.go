@@ -35,8 +35,8 @@ func TestGenerateOTP(t *testing.T) {
 				mock.ExpectExec(regexp.QuoteMeta("DELETE FROM verification_codes WHERE email = ?")).
 					WithArgs("test@example.com").
 					WillReturnResult(sqlmock.NewResult(0, 0))
-				// Then expect INSERT
-				mock.ExpectExec(regexp.QuoteMeta("INSERT INTO verification_codes (email, code, expires_at) VALUES (?, ?, ?)")).
+				// Then expect INSERT (Squirrel generates SQL without spaces after commas)
+				mock.ExpectExec(regexp.QuoteMeta("INSERT INTO verification_codes (email,code,expires_at) VALUES (?,?,?)")).
 					WithArgs("test@example.com", sqlmock.AnyArg(), sqlmock.AnyArg()).
 					WillReturnResult(sqlmock.NewResult(1, 1))
 			},
@@ -61,8 +61,8 @@ func TestGenerateOTP(t *testing.T) {
 				mock.ExpectExec(regexp.QuoteMeta("DELETE FROM verification_codes WHERE email = ?")).
 					WithArgs("test@example.com").
 					WillReturnResult(sqlmock.NewResult(0, 0))
-				// INSERT fails
-				mock.ExpectExec(regexp.QuoteMeta("INSERT INTO verification_codes (email, code, expires_at) VALUES (?, ?, ?)")).
+				// INSERT fails (Squirrel generates SQL without spaces after commas)
+				mock.ExpectExec(regexp.QuoteMeta("INSERT INTO verification_codes (email,code,expires_at) VALUES (?,?,?)")).
 					WithArgs("test@example.com", sqlmock.AnyArg(), sqlmock.AnyArg()).
 					WillReturnError(errors.New("database connection failed"))
 			},
@@ -123,7 +123,8 @@ func TestValidateOTP(t *testing.T) {
 			setupMock: func(mock sqlmock.Sqlmock) {
 				rows := sqlmock.NewRows([]string{"email", "code", "expires_at"}).
 					AddRow("test@example.com", "ABC123", validExpiry)
-				mock.ExpectQuery(regexp.QuoteMeta("SELECT email, code, expires_at FROM verification_codes where email = ?")).
+				// Squirrel generates SELECT with spaces after commas
+				mock.ExpectQuery(regexp.QuoteMeta("SELECT email, code, expires_at FROM verification_codes WHERE email = ?")).
 					WithArgs("test@example.com").
 					WillReturnRows(rows)
 				mock.ExpectExec(regexp.QuoteMeta("DELETE FROM verification_codes WHERE email = ?")).
@@ -138,7 +139,8 @@ func TestValidateOTP(t *testing.T) {
 			email: "test@example.com",
 			code:  "ABC123",
 			setupMock: func(mock sqlmock.Sqlmock) {
-				mock.ExpectQuery(regexp.QuoteMeta("SELECT email, code, expires_at FROM verification_codes where email = ?")).
+				// Squirrel generates SELECT with spaces after commas
+				mock.ExpectQuery(regexp.QuoteMeta("SELECT email, code, expires_at FROM verification_codes WHERE email = ?")).
 					WithArgs("test@example.com").
 					WillReturnError(sql.ErrNoRows)
 			},
@@ -153,7 +155,8 @@ func TestValidateOTP(t *testing.T) {
 			setupMock: func(mock sqlmock.Sqlmock) {
 				rows := sqlmock.NewRows([]string{"email", "code", "expires_at"}).
 					AddRow("test@example.com", "ABC123", validExpiry)
-				mock.ExpectQuery(regexp.QuoteMeta("SELECT email, code, expires_at FROM verification_codes where email = ?")).
+				// Squirrel generates SELECT with spaces after commas
+				mock.ExpectQuery(regexp.QuoteMeta("SELECT email, code, expires_at FROM verification_codes WHERE email = ?")).
 					WithArgs("test@example.com").
 					WillReturnRows(rows)
 			},
@@ -168,7 +171,8 @@ func TestValidateOTP(t *testing.T) {
 			setupMock: func(mock sqlmock.Sqlmock) {
 				rows := sqlmock.NewRows([]string{"email", "code", "expires_at"}).
 					AddRow("test@example.com", "ABC123", expiredTime)
-				mock.ExpectQuery(regexp.QuoteMeta("SELECT email, code, expires_at FROM verification_codes where email = ?")).
+				// Squirrel generates SELECT with spaces after commas
+				mock.ExpectQuery(regexp.QuoteMeta("SELECT email, code, expires_at FROM verification_codes WHERE email = ?")).
 					WithArgs("test@example.com").
 					WillReturnRows(rows)
 			},
@@ -183,7 +187,8 @@ func TestValidateOTP(t *testing.T) {
 			setupMock: func(mock sqlmock.Sqlmock) {
 				rows := sqlmock.NewRows([]string{"email", "code", "expires_at"}).
 					AddRow("test@example.com", "ABC123", validExpiry)
-				mock.ExpectQuery(regexp.QuoteMeta("SELECT email, code, expires_at FROM verification_codes where email = ?")).
+				// Squirrel generates SELECT with spaces after commas
+				mock.ExpectQuery(regexp.QuoteMeta("SELECT email, code, expires_at FROM verification_codes WHERE email = ?")).
 					WithArgs("test@example.com").
 					WillReturnRows(rows)
 				mock.ExpectExec(regexp.QuoteMeta("DELETE FROM verification_codes WHERE email = ?")).
@@ -229,8 +234,8 @@ func TestGenerateOTP_CodeFormat(t *testing.T) {
 	mock.ExpectExec(regexp.QuoteMeta("DELETE FROM verification_codes WHERE email = ?")).
 		WithArgs("test@example.com").
 		WillReturnResult(sqlmock.NewResult(0, 0))
-	// Then expect INSERT
-	mock.ExpectExec(regexp.QuoteMeta("INSERT INTO verification_codes (email, code, expires_at) VALUES (?, ?, ?)")).
+	// Then expect INSERT (Squirrel generates SQL without spaces after commas)
+	mock.ExpectExec(regexp.QuoteMeta("INSERT INTO verification_codes (email,code,expires_at) VALUES (?,?,?)")).
 		WithArgs("test@example.com", sqlmock.AnyArg(), sqlmock.AnyArg()).
 		WillReturnResult(sqlmock.NewResult(1, 1))
 
@@ -257,8 +262,8 @@ func TestGenerateOTP_ExpirationTime(t *testing.T) {
 	mock.ExpectExec(regexp.QuoteMeta("DELETE FROM verification_codes WHERE email = ?")).
 		WithArgs("test@example.com").
 		WillReturnResult(sqlmock.NewResult(0, 0))
-	// Then expect INSERT
-	mock.ExpectExec(regexp.QuoteMeta("INSERT INTO verification_codes (email, code, expires_at) VALUES (?, ?, ?)")).
+	// Then expect INSERT (Squirrel generates SQL without spaces after commas)
+	mock.ExpectExec(regexp.QuoteMeta("INSERT INTO verification_codes (email,code,expires_at) VALUES (?,?,?)")).
 		WithArgs("test@example.com", sqlmock.AnyArg(), sqlmock.AnyArg()).
 		WillReturnResult(sqlmock.NewResult(1, 1))
 
