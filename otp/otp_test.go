@@ -31,22 +31,43 @@ func TestGenerateOTP(t *testing.T) {
 			name:  "successful OTP generation",
 			email: "test@example.com",
 			setupMock: func(mock sqlmock.Sqlmock) {
-				mock.ExpectExec(regexp.QuoteMeta("INSERT INTO verification_codes (email, code, expires_at) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE code=?, expires_at=?")).
-					WithArgs("test@example.com", sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg()).
+				// Expect DELETE first (to remove any existing code)
+				mock.ExpectExec(regexp.QuoteMeta("DELETE FROM verification_codes WHERE email = ?")).
+					WithArgs("test@example.com").
+					WillReturnResult(sqlmock.NewResult(0, 0))
+				// Then expect INSERT
+				mock.ExpectExec(regexp.QuoteMeta("INSERT INTO verification_codes (email, code, expires_at) VALUES (?, ?, ?)")).
+					WithArgs("test@example.com", sqlmock.AnyArg(), sqlmock.AnyArg()).
 					WillReturnResult(sqlmock.NewResult(1, 1))
 			},
 			expectError: false,
 		},
 		{
+			name:  "database error during delete",
+			email: "test@example.com",
+			setupMock: func(mock sqlmock.Sqlmock) {
+				mock.ExpectExec(regexp.QuoteMeta("DELETE FROM verification_codes WHERE email = ?")).
+					WithArgs("test@example.com").
+					WillReturnError(errors.New("delete failed"))
+			},
+			expectError: true,
+			errorMsg:    "failed to delete existing code",
+		},
+		{
 			name:  "database error during insert",
 			email: "test@example.com",
 			setupMock: func(mock sqlmock.Sqlmock) {
-				mock.ExpectExec(regexp.QuoteMeta("INSERT INTO verification_codes (email, code, expires_at) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE code=?, expires_at=?")).
-					WithArgs("test@example.com", sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg()).
+				// DELETE succeeds
+				mock.ExpectExec(regexp.QuoteMeta("DELETE FROM verification_codes WHERE email = ?")).
+					WithArgs("test@example.com").
+					WillReturnResult(sqlmock.NewResult(0, 0))
+				// INSERT fails
+				mock.ExpectExec(regexp.QuoteMeta("INSERT INTO verification_codes (email, code, expires_at) VALUES (?, ?, ?)")).
+					WithArgs("test@example.com", sqlmock.AnyArg(), sqlmock.AnyArg()).
 					WillReturnError(errors.New("database connection failed"))
 			},
 			expectError: true,
-			errorMsg:    "error inserting verification code",
+			errorMsg:    "failed to insert verification code",
 		},
 	}
 
@@ -204,8 +225,13 @@ func TestGenerateOTP_CodeFormat(t *testing.T) {
 	require.NoError(t, err)
 	defer db.Close()
 
-	mock.ExpectExec(regexp.QuoteMeta("INSERT INTO verification_codes (email, code, expires_at) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE code=?, expires_at=?")).
-		WithArgs("test@example.com", sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg()).
+	// Expect DELETE first
+	mock.ExpectExec(regexp.QuoteMeta("DELETE FROM verification_codes WHERE email = ?")).
+		WithArgs("test@example.com").
+		WillReturnResult(sqlmock.NewResult(0, 0))
+	// Then expect INSERT
+	mock.ExpectExec(regexp.QuoteMeta("INSERT INTO verification_codes (email, code, expires_at) VALUES (?, ?, ?)")).
+		WithArgs("test@example.com", sqlmock.AnyArg(), sqlmock.AnyArg()).
 		WillReturnResult(sqlmock.NewResult(1, 1))
 
 	otpService := newTestOTP(db)
@@ -227,8 +253,13 @@ func TestGenerateOTP_ExpirationTime(t *testing.T) {
 	require.NoError(t, err)
 	defer db.Close()
 
-	mock.ExpectExec(regexp.QuoteMeta("INSERT INTO verification_codes (email, code, expires_at) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE code=?, expires_at=?")).
-		WithArgs("test@example.com", sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg()).
+	// Expect DELETE first
+	mock.ExpectExec(regexp.QuoteMeta("DELETE FROM verification_codes WHERE email = ?")).
+		WithArgs("test@example.com").
+		WillReturnResult(sqlmock.NewResult(0, 0))
+	// Then expect INSERT
+	mock.ExpectExec(regexp.QuoteMeta("INSERT INTO verification_codes (email, code, expires_at) VALUES (?, ?, ?)")).
+		WithArgs("test@example.com", sqlmock.AnyArg(), sqlmock.AnyArg()).
 		WillReturnResult(sqlmock.NewResult(1, 1))
 
 	otpService := newTestOTP(db)

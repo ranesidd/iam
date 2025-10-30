@@ -73,13 +73,21 @@ func (c *OTP) getVerificationCode(ctx context.Context, email string) (OTPPayload
 	return codes, nil
 }
 
-func (c *OTP) insertVerificationCode(ctx context.Context, code OTPPayload) error {
-	query := "INSERT INTO verification_codes (email, code, expires_at) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE code=?, expires_at=?"
-
-	_, err := c.db.ExecContext(ctx, query, code.Email, code.Code, code.ExpiresAt, code.Code, code.ExpiresAt)
+func (o *OTP) insertVerificationCode(ctx context.Context, otp OTPPayload) error {
+	// Delete existing code if any
+	_, err := o.db.ExecContext(ctx, "DELETE FROM verification_codes WHERE email = ?", otp.Email)
 	if err != nil {
-		return fmt.Errorf("error inserting verification code: %v", err)
+		return fmt.Errorf("failed to delete existing code: %w", err)
 	}
+
+	// Insert new code
+	_, err = o.db.ExecContext(ctx,
+		"INSERT INTO verification_codes (email, code, expires_at) VALUES (?, ?, ?)",
+		otp.Email, otp.Code, otp.ExpiresAt)
+	if err != nil {
+		return fmt.Errorf("failed to insert verification code: %w", err)
+	}
+
 	return nil
 }
 
