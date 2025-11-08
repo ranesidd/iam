@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Question or Discussion
+    url: https://github.com/ranesidd/iam/discussions
+    about: Ask questions or discuss ideas with the community
+  - name: Firebase Documentation
+    url: https://firebase.google.com/docs/auth
+    about: Official Firebase Authentication documentation
+  - name: Identity Platform Documentation
+    url: https://cloud.google.com/identity-platform/docs
+    about: Google Cloud Identity Platform documentation

@@ -1,0 +1,143 @@
+name: Feature Request
+description: Suggest a new feature or enhancement for the IAM library
+title: "[Feature]: "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for suggesting a new feature! Please fill out the information below to help us understand your request.
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Feature Description
+      description: A clear and concise description of the feature you'd like to see.
+      placeholder: Describe the feature you want...
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem/Use Case
+      description: What problem does this feature solve? What is your use case?
+      placeholder: |
+        I'm trying to accomplish... but currently...
+        This feature would help me...
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed Solution
+      description: How would you like this feature to work? Describe the API, behavior, or implementation.
+      placeholder: |
+        I would like to see a new method like:
+
+        func (c *GoogleIAM) FeatureName(...) error {
+            // ...
+        }
+    validations:
+      required: true
+
+  - type: dropdown
+    id: provider
+    attributes:
+      label: Related Component
+      description: Which part of the library is this feature for?
+      options:
+        - Google IAM (Firebase)
+        - OTP Package
+        - Common utilities
+        - New IAM provider
+        - Documentation
+        - Testing
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives Considered
+      description: Have you considered any alternative solutions or workarounds?
+      placeholder: |
+        I've considered... but it doesn't work because...
+        Current workaround: ...
+
+  - type: textarea
+    id: implementation
+    attributes:
+      label: Implementation Ideas (Optional)
+      description: If you have ideas on how to implement this feature, share them here.
+      placeholder: |
+        This could be implemented by...
+        Relevant Firebase API: ...
+        Potential challenges: ...
+
+  - type: textarea
+    id: examples
+    attributes:
+      label: Code Examples (Optional)
+      description: Provide example code showing how you'd like to use this feature.
+      render: go
+      placeholder: |
+        package main
+
+        import (
+            "context"
+            googleiam "github.com/ranesidd/iam/google_iam"
+        )
+
+        func main() {
+            // Example usage of proposed feature
+        }
+
+  - type: dropdown
+    id: breaking
+    attributes:
+      label: Breaking Change
+      description: Would this feature require breaking changes to existing APIs?
+      options:
+        - "No - fully backward compatible"
+        - "Maybe - could affect existing behavior"
+        - "Yes - requires breaking changes"
+        - "Not sure"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: priority
+    attributes:
+      label: Priority
+      description: How important is this feature to you?
+      options:
+        - "Nice to have"
+        - "Important - would improve my workflow"
+        - "Critical - blocking my use case"
+    validations:
+      required: true
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional Context
+      description: Add any other context, screenshots, links to documentation, or examples from other libraries.
+      placeholder: |
+        Similar features in other libraries: ...
+        Related Firebase documentation: ...
+        Screenshots/diagrams: ...
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Pre-submission Checklist
+      options:
+        - label: I have searched existing issues and pull requests to ensure this hasn't been requested already
+          required: true
+        - label: I have clearly described the problem this feature solves
+          required: true
+        - label: I am willing to help implement this feature
+          required: false
