@@ -1,0 +1,144 @@
+name: Bug Report
+description: Report a bug or unexpected behavior in the IAM library
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for taking the time to report a bug! Please fill out the information below to help us diagnose and fix the issue.
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Bug Description
+      description: A clear and concise description of what the bug is.
+      placeholder: Describe the bug you encountered...
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to Reproduce
+      description: Provide detailed steps to reproduce the bug.
+      placeholder: |
+        1. Initialize GoogleIAM with...
+        2. Call method...
+        3. Observe error...
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected Behavior
+      description: What did you expect to happen?
+      placeholder: Describe what should have happened...
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual Behavior
+      description: What actually happened?
+      placeholder: Describe what actually happened...
+    validations:
+      required: true
+
+  - type: textarea
+    id: code
+    attributes:
+      label: Code Snippet
+      description: Provide a minimal code snippet that reproduces the issue.
+      render: go
+      placeholder: |
+        package main
+
+        import (
+            "context"
+            googleiam "github.com/ranesidd/iam/google_iam"
+        )
+
+        func main() {
+            // Your code here
+        }
+
+  - type: textarea
+    id: error
+    attributes:
+      label: Error Message/Stack Trace
+      description: If applicable, paste the complete error message or stack trace.
+      render: shell
+      placeholder: Paste error message here...
+
+  - type: input
+    id: go-version
+    attributes:
+      label: Go Version
+      description: What version of Go are you using?
+      placeholder: "e.g., 1.23.1"
+    validations:
+      required: true
+
+  - type: input
+    id: lib-version
+    attributes:
+      label: Library Version
+      description: What version of the IAM library are you using?
+      placeholder: "e.g., v1.0.0 or commit hash"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: provider
+    attributes:
+      label: IAM Provider
+      description: Which IAM provider are you using?
+      options:
+        - Google IAM (Firebase)
+        - OTP Package (standalone)
+        - Other
+    validations:
+      required: true
+
+  - type: input
+    id: os
+    attributes:
+      label: Operating System
+      description: What operating system are you using?
+      placeholder: "e.g., macOS 14.0, Ubuntu 22.04, Windows 11"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: database
+    attributes:
+      label: Database (OTP only)
+      description: If using OTP package, which database are you using?
+      options:
+        - Not applicable
+        - MySQL
+        - PostgreSQL
+        - SQLite
+        - Other
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional Context
+      description: Add any other context about the problem here (e.g., Firebase project setup, multi-tenancy configuration, etc.)
+      placeholder: Any additional information that might be helpful...
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Pre-submission Checklist
+      options:
+        - label: I have searched existing issues to ensure this bug hasn't been reported already
+          required: true
+        - label: I have provided all required information above
+          required: true
+        - label: I have included a minimal code snippet that reproduces the issue
+          required: false
